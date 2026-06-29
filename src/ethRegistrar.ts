@@ -1,5 +1,12 @@
 // Import types and APIs from graph-ts
-import { BigInt, ByteArray, Bytes, crypto, ens } from "@graphprotocol/graph-ts";
+import {
+  BigInt,
+  ByteArray,
+  Bytes,
+  crypto,
+  ens,
+  store,
+} from "@graphprotocol/graph-ts";
 
 import {
   checkValidLabel,
@@ -34,6 +41,7 @@ import {
   NameRenewed,
   NameTransferred,
   Registration,
+  WrappedDomain,
 } from "./types/schema";
 
 const GRACE_PERIOD_SECONDS = BigInt.fromI32(7776000); // 90 days
@@ -55,6 +63,17 @@ export function handleNameRegistered(event: NameRegisteredEvent): void {
 
   domain.registrant = account.id;
   domain.expiryDate = event.params.expires.plus(GRACE_PERIOD_SECONDS);
+
+  // A fresh .eth registration means any previous wrapped registration has lapsed
+  // (a name leaving the NameWrapper by expiry emits no NameUnwrapped event, so the
+  // wrapped state would otherwise go stale). Clear it here. If this is a
+  // register-and-wrap in the same tx, the BaseRegistrar NameRegistered event fires
+  // before the NameWrapper NameWrapped/TransferSingle events, which recreate the
+  // WrappedDomain with the correct new owner.
+  domain.wrappedOwner = null;
+  if (WrappedDomain.load(domain.id) != null) {
+    store.remove("WrappedDomain", domain.id);
+  }
 
   let labelName = ens.nameByHash(label.toHexString());
   if (checkValidLabel(labelName)) {
