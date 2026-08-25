@@ -27,7 +27,7 @@ import {
   ETH_NODE,
 } from "./utils";
 
-function decodeName(buf: Bytes): Array<string> | null {
+export function decodeName(buf: Bytes): Array<string> | null {
   let offset = 0;
   let list = new ByteArray(0);
   let dot = Bytes.fromHexString("2e");
