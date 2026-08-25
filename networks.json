@@ -63,6 +63,25 @@
     "UnwrappedEthRegistrarController": {
       "address": "0xfb3cE5D01e0f33f41DbB39035dB9745962F1f968",
       "startBlock": 8579988
+    },
+    "RootRegistry": {
+      "address": "0xc960F7217d3643B525Ef36Bec8Adf86953CD9aB8",
+      "startBlock": 11465480
+    },
+    "ETHRegistry": {
+      "address": "0xDEDB92913A25abE1f7BCDD85D8A344a43B398B67",
+      "startBlock": 11465480
+    },
+    "ETHRegistrar": {
+      "address": "0x8c2E866B439358c41AE05De9cbE8A00BFEFafFcA",
+      "startBlock": 11479218
+    },
+    "VerifiableFactory": {
+      "address": "0xD2a632D8a8b67c2c4398c255CbD7aF8dd7236198",
+      "startBlock": 11465480
+    },
+    "PermissionedResolver": {
+      "startBlock": 11465480
     }
   },
   "holesky": {

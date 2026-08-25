@@ -278,6 +278,12 @@ type Account @entity(immutable: false) {
   registrations: [Registration!] @derivedFrom(field: "registrant")
 }
 
+extend type Account {
+  ensv2Slots: [ENSv2NameSlot!]! @derivedFrom(field: "owner")
+  ensv2Tokens: [ENSv2Token!]! @derivedFrom(field: "owner")
+  ensv2Registrations: [ENSv2Registration!]! @derivedFrom(field: "owner")
+}
+
 type Resolver @entity(immutable: false) {
   "The unique identifier for this resolver, which is a concatenation of the resolver address and the domain namehash"
   id: ID!
@@ -448,4 +454,339 @@ type VersionChanged implements ResolverEvent @entity(immutable: true) {
   transactionID: Bytes!
   "The new version number of the resolver"
   version: BigInt!
+}
+
+# ---------------------------------------------------------------------------
+# ENSv2 — additive schema per docs/plan.md / ENSv2 Subgraph Upgrade Proposal.
+# ENSv2-native entities are the source of truth for registries, namespaces,
+# slots, tokens, resources, and linked paths. Domain (above) and
+# ENSv2NamePath remain materialised projections — see docs/plan.md's
+# "Approach" section for the late-link/bounded-cost projection rule.
+# ---------------------------------------------------------------------------
+
+enum ENSv2RegistryKind {
+  ROOT
+  ETH
+  USER
+  WRAPPER
+  REVERSE
+  UNKNOWN
+}
+
+enum ENSv2NameSlotStatus {
+  AVAILABLE
+  RESERVED
+  REGISTERED
+}
+
+type ENSv2Registry @entity(immutable: false) {
+  id: ID! # registry address
+  address: Bytes!
+  kind: ENSv2RegistryKind!
+  canonicalParentRegistry: ENSv2Registry
+  canonicalParentLabel: String
+  namespaces: [ENSv2Namespace!]! @derivedFrom(field: "registry")
+  namespaceCount: Int!
+  discoveredAt: BigInt!
+  createdAtBlock: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+type ENSv2NameSlot @entity(immutable: false) {
+  id: ID! # registry-address + slotId
+  registry: ENSv2Registry!
+  slotId: BigInt!
+  labelhash: Bytes!
+  label: String
+  currentResource: ENSv2Resource
+  currentToken: ENSv2Token
+  owner: Account
+  registrant: Account
+  resolverAddress: Bytes
+  resolver: ENSv2Resolver
+  subregistryAddress: Bytes
+  subregistry: ENSv2Registry
+  status: ENSv2NameSlotStatus!
+  expiryDate: BigInt
+  pathCount: Int!
+  migratedFromV1: Boolean! # true if the current registration's sender was a migration controller
+  resources: [ENSv2Resource!]! @derivedFrom(field: "slot")
+  paths: [ENSv2NamePath!]! @derivedFrom(field: "slot")
+  events: [ENSv2NameSlotEvent!]! @derivedFrom(field: "slot")
+  createdAt: BigInt!
+  updatedAt: BigInt!
+  createdAtBlock: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+type ENSv2Resource @entity(immutable: false) {
+  id: ID! # registry-address + resource
+  registry: ENSv2Registry!
+  slot: ENSv2NameSlot!
+  resource: BigInt!
+  currentToken: ENSv2Token
+  active: Boolean!
+  createdAt: BigInt!
+  endedAt: BigInt
+  createdAtBlock: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+type ENSv2Token @entity(immutable: false) {
+  id: ID! # registry-address + tokenId
+  registry: ENSv2Registry!
+  slot: ENSv2NameSlot
+  resource: BigInt
+  resourceEntity: ENSv2Resource
+  tokenId: BigInt!
+  owner: Account
+  active: Boolean!
+  createdAtBlock: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+type ENSv2NamePath @entity(immutable: false) {
+  id: ID! # namehash hex
+  slot: ENSv2NameSlot!
+  registry: ENSv2Registry! # registry that owns this label slot
+  namespace: ENSv2Namespace!
+  parent: ENSv2NamePath
+  label: String
+  labelhash: Bytes!
+  name: String
+  namehash: Bytes!
+  depth: Int!
+  domain: Domain # compatibility projection, nullable by design
+  active: Boolean!
+  namespaceCount: Int! # needed to enumerate ENSv2PathNamespaceIndex
+  createdAt: BigInt!
+  updatedAt: BigInt!
+  createdAtBlock: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+type ENSv2Namespace @entity(immutable: false) {
+  id: ID! # registry + baseNamehash
+  registry: ENSv2Registry! # registry serving this namespace
+  parentPath: ENSv2NamePath # e.g. base.eth for the registry serving *.base.eth
+  parentSlot: ENSv2NameSlot
+  parentRegistry: ENSv2Registry
+  parentSlotId: BigInt
+  parentTokenId: BigInt
+  parentResource: BigInt
+  baseName: String
+  baseNamehash: Bytes!
+  active: Boolean!
+  createdAt: BigInt!
+  createdAtBlock: BigInt!
+  updatedAtBlock: BigInt!
+  transactionID: Bytes
+  logIndex: BigInt
+}
+
+type ENSv2NamespaceLink @entity(immutable: false) {
+  id: ID! # parent registry + parent slot + child address + activation log
+  parentRegistry: ENSv2Registry!
+  parentSlot: ENSv2NameSlot
+  parentSlotId: BigInt!
+  parentTokenId: BigInt
+  parentResource: BigInt
+  childRegistryAddress: Bytes!
+  childRegistry: ENSv2Registry
+  active: Boolean!
+  transactionID: Bytes!
+  blockNumber: BigInt!
+  logIndex: BigInt!
+}
+
+type ENSv2Resolver @entity(immutable: false) {
+  id: ID! # resolver address
+  address: Bytes!
+  slots: [ENSv2NameSlot!]! @derivedFrom(field: "resolver")
+}
+
+type ENSv2RoleAssignment @entity(immutable: false) {
+  id: ID! # contract-address + resource + account
+  contract: Bytes!
+  resource: BigInt!
+  resourceEntity: ENSv2Resource
+  account: Account!
+  roleBitmap: BigInt!
+  updatedAtBlock: BigInt!
+}
+
+type ENSv2RoleChange @entity(immutable: true) {
+  id: ID!
+  contract: Bytes!
+  resource: BigInt!
+  account: Account!
+  oldRoleBitmap: BigInt!
+  newRoleBitmap: BigInt!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+}
+
+interface ENSv2NameSlotEvent {
+  id: ID!
+  slot: ENSv2NameSlot!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+}
+
+type ENSv2LabelRegistered implements ENSv2NameSlotEvent @entity(immutable: true) {
+  id: ID! # transactionID-logIndex
+  slot: ENSv2NameSlot!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+  owner: Account!
+  expiryDate: BigInt!
+  isReRegistration: Boolean!
+  sender: Bytes! # event.params.sender, the actual caller of register()
+  isV1Migration: Boolean! # true if sender matches a known migration controller address
+}
+
+type ENSv2LabelRenewed implements ENSv2NameSlotEvent @entity(immutable: true) {
+  id: ID!
+  slot: ENSv2NameSlot!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+  newExpiryDate: BigInt!
+}
+
+type ENSv2LabelUnregistered implements ENSv2NameSlotEvent @entity(immutable: true) {
+  id: ID!
+  slot: ENSv2NameSlot!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+  sender: Bytes!
+}
+
+type ENSv2TokenTransferred implements ENSv2NameSlotEvent @entity(immutable: true) {
+  id: ID!
+  slot: ENSv2NameSlot!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+  from: Account!
+  to: Account!
+  tokenId: BigInt!
+}
+
+type ENSv2TokenRegenerated implements ENSv2NameSlotEvent @entity(immutable: true) {
+  id: ID!
+  slot: ENSv2NameSlot!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+  oldTokenId: BigInt!
+  newTokenId: BigInt!
+}
+
+type ENSv2ResolverUpdate implements ENSv2NameSlotEvent @entity(immutable: true) {
+  id: ID!
+  slot: ENSv2NameSlot!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+  resolverAddress: Bytes # null means setResolver(..., address(0))
+  sender: Bytes!
+}
+
+type ENSv2SubregistryUpdate implements ENSv2NameSlotEvent @entity(immutable: true) {
+  id: ID!
+  slot: ENSv2NameSlot!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+  subregistryAddress: Bytes # null means setSubregistry(..., address(0))
+  sender: Bytes!
+}
+
+type ENSv2Registration @entity(immutable: false) {
+  id: ID! # registrar tx/log or registry + resource
+  slot: ENSv2NameSlot!
+  resource: ENSv2Resource
+  path: ENSv2NamePath
+  label: String
+  owner: Account
+  duration: BigInt
+  paymentToken: Bytes
+  referrer: Bytes
+  base: BigInt
+  premium: BigInt
+  registrationDate: BigInt!
+  expiryDate: BigInt
+  transactionID: Bytes!
+  logIndex: BigInt!
+}
+
+# `ENSv2ResolverAlias` stores resolver level alias rules.
+# These rules affect effective resolution, but they do not mutate the legacy `Resolver` row for the source node.
+type ENSv2ResolverAlias @entity(immutable: false) {
+  id: ID! # resolver + fromName bytes
+  resolver: ENSv2Resolver!
+  fromName: Bytes!
+  toName: Bytes
+  fromNode: Bytes!
+  toNode: Bytes
+  fromNameDecoded: String
+  toNameDecoded: String
+  active: Boolean!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+}
+
+type ENSv2ResolverResource @entity(immutable: false) {
+  id: ID! # resolver + resource + optional part type/key
+  resolver: ENSv2Resolver!
+  resource: BigInt! # resolver-side resource, not the same ID space as ENSv2Resource.resource
+  node: Bytes!
+  name: Bytes!
+  nameDecoded: String
+  kind: String! # NAME, TEXT, DATA, ADDR
+  key: String
+  keyHash: Bytes
+  coinType: BigInt
+  active: Boolean!
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+}
+
+type ENSv2ResolverData @entity(immutable: false) {
+  id: ID! # resolver + node + key
+  resolver: ENSv2Resolver!
+  node: Bytes!
+  key: String!
+  value: Bytes
+  blockNumber: BigInt!
+  transactionID: Bytes!
+  logIndex: BigInt!
+}
+
+type ENSv2RegistryNamespaceIndex @entity(immutable: false) {
+  id: ID! # registry + index
+  registry: ENSv2Registry!
+  index: Int!
+  namespace: ENSv2Namespace!
+}
+
+type ENSv2SlotPathIndex @entity(immutable: false) {
+  id: ID! # slot + index
+  slot: ENSv2NameSlot!
+  index: Int!
+  path: ENSv2NamePath!
+}
+
+type ENSv2PathNamespaceIndex @entity(immutable: false) {
+  id: ID! # path + index
+  path: ENSv2NamePath!
+  index: Int!
+  namespace: ENSv2Namespace!
 }
