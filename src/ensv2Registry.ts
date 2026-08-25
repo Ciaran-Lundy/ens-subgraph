@@ -21,6 +21,7 @@ import {
   isMigrationController,
 } from "./ensv2Constants";
 import { correctMigratedLegacyOwner, getEthDomainId } from "./ensv2Domain";
+import { processEACRolesChanged } from "./ensv2Roles";
 import {
   handleParentUpdated as handleParentUpdatedPaths,
   handleResolverUpdated as handleResolverUpdatedPaths,
@@ -491,4 +492,14 @@ export function handleParentUpdated(event: ParentUpdated): void {
 
 export function handleEACRolesChanged(event: EACRolesChanged): void {
   bootstrapRegistry(event.address, event.block);
+  processEACRolesChanged(
+    event.address,
+    event.params.resource,
+    event.params.account,
+    event.params.oldRoleBitmap,
+    event.params.newRoleBitmap,
+    event.block,
+    event.transaction.hash,
+    event.logIndex
+  );
 }

@@ -16,6 +16,7 @@
 import { Address, BigInt, Bytes, crypto, ethereum } from "@graphprotocol/graph-ts";
 import { concat } from "./utils";
 import { decodeName } from "./nameWrapper";
+import { processEACRolesChanged } from "./ensv2Roles";
 import { ENSv2Resolver, ENSv2ResolverAlias, ENSv2ResolverData, ENSv2ResolverResource } from "./types/schema";
 import {
   AliasChanged,
@@ -260,4 +261,15 @@ export function handleDataChanged(event: DataChanged): void {
   data.save();
 }
 
-export function handleEACRolesChanged(event: EACRolesChanged): void {}
+export function handleEACRolesChanged(event: EACRolesChanged): void {
+  processEACRolesChanged(
+    event.address,
+    event.params.resource,
+    event.params.account,
+    event.params.oldRoleBitmap,
+    event.params.newRoleBitmap,
+    event.block,
+    event.transaction.hash,
+    event.logIndex
+  );
+}
