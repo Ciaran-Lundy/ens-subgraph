@@ -29,6 +29,7 @@ import {
   toSlotId,
 } from "./ensv2Utils";
 import { getOrCreateRegistry } from "./ensv2Discovery";
+import { projectPathToDomain } from "./ensv2Domain";
 import {
   ENSv2NamePath,
   ENSv2Namespace,
@@ -329,6 +330,8 @@ export function materializePathsForSlot(
       path.updatedAtBlock = event.block.number;
       path.save();
     }
+
+    projectPathToDomain(path, slot, event);
   }
 }
 

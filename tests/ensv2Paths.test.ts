@@ -26,6 +26,7 @@ import {
 const ROOT_REGISTRY = "0xc960F7217d3643B525Ef36Bec8Adf86953CD9aB8";
 const ETH_REGISTRY = "0xDEDB92913A25abE1f7BCDD85D8A344a43B398B67";
 const OWNER = "0x89205A3A3b2A69De6Dbf7f01ED13B2108B2c43e7";
+const OWNER_2 = "0xF0205A3A3b2A69De6Dbf7f01ED13B2108B2c4321";
 const SENDER = "0x11111111111111111111111111111111111111aa";
 const ROOT_NAMEHASH =
   "0x0000000000000000000000000000000000000000000000000000000000000000";
@@ -57,7 +58,8 @@ const createLabelRegisteredEvent = (
   registryAddress: string,
   tokenId: BigInt,
   labelHash: Bytes,
-  label: string
+  label: string,
+  owner: string = OWNER
 ): LabelRegistered => {
   let mockEvent = newMockEvent();
   let event = new LabelRegistered(
@@ -90,7 +92,7 @@ const createLabelRegisteredEvent = (
   event.parameters.push(
     new ethereum.EventParam(
       "owner",
-      ethereum.Value.fromAddress(Address.fromString(OWNER))
+      ethereum.Value.fromAddress(Address.fromString(owner))
     )
   );
   event.parameters.push(
@@ -522,4 +524,185 @@ test("SubregistryUpdated(..., address(0)) clears the link and deactivates (not d
 
   assert.assertTrue(slotExists(rootSlotId));
   assert.fieldEquals("ENSv2Namespace", namespaceEntityId, "active", "false");
+});
+
+test("fresh non-.eth registration produces a queryable Domain row with correct parent chain", () => {
+  dataSourceMock.setNetwork("sepolia");
+
+  const CHILD_REGISTRY = "0x666666666666666666666666666666666666666f";
+
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ROOT_REGISTRY,
+      slotToken(1),
+      Bytes.fromI32(70),
+      "alpha"
+    )
+  );
+  let alphaPathId = pathNamehash(
+    Bytes.fromHexString(ROOT_NAMEHASH),
+    Bytes.fromI32(70)
+  ).toHexString();
+  assert.fieldEquals("Domain", alphaPathId, "name", "alpha");
+  assert.fieldEquals(
+    "Domain",
+    alphaPathId,
+    "owner",
+    Address.fromString(OWNER).toHexString()
+  );
+
+  handleSubregistryUpdated(
+    createSubregistryUpdatedEvent(ROOT_REGISTRY, slotToken(1), CHILD_REGISTRY)
+  );
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      CHILD_REGISTRY,
+      slotToken(1),
+      Bytes.fromI32(71),
+      "beta"
+    )
+  );
+  let betaPathId = pathNamehash(
+    Bytes.fromHexString(alphaPathId),
+    Bytes.fromI32(71)
+  ).toHexString();
+
+  assert.fieldEquals("Domain", betaPathId, "name", "beta.alpha");
+  assert.fieldEquals("Domain", betaPathId, "parent", alphaPathId);
+  // Non-.eth: no legacy Registration row, and no grace-period addition —
+  // Domain.expiryDate is the slot's raw expiry.
+  assert.fieldEquals("Domain", betaPathId, "expiryDate", "2000000000");
+  assert.notInStore("Registration", Bytes.fromI32(71).toHexString());
+});
+
+test("fresh .eth registration produces Domain + Registration sharing the legacy labelhash ID, with the grace-period split applied only to Domain", () => {
+  dataSourceMock.setNetwork("sepolia");
+
+  // ETHRegistry must first be linked under root's "eth" slot — its own
+  // namespaceCount is 0 (and materializePathsForSlot a no-op) until then.
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ROOT_REGISTRY,
+      slotToken(1),
+      Bytes.fromI32(79),
+      "eth"
+    )
+  );
+  handleSubregistryUpdated(
+    createSubregistryUpdatedEvent(ROOT_REGISTRY, slotToken(1), ETH_REGISTRY)
+  );
+  let ethPathId = pathNamehash(
+    Bytes.fromHexString(ROOT_NAMEHASH),
+    Bytes.fromI32(79)
+  ).toHexString();
+
+  let labelHash = Bytes.fromI32(80);
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ETH_REGISTRY,
+      slotToken(1),
+      labelHash,
+      "vitalik"
+    )
+  );
+
+  let pathId = pathNamehash(Bytes.fromHexString(ethPathId), labelHash)
+    .toHexString();
+  let registrationId = labelHash.toHexString();
+
+  assert.fieldEquals("Domain", pathId, "name", "vitalik.eth");
+  assert.fieldEquals("Registration", registrationId, "domain", pathId);
+  assert.fieldEquals(
+    "Registration",
+    registrationId,
+    "expiryDate",
+    "2000000000"
+  );
+  // v2GracePeriod is 2,419,200s (28 days) per src/ensv2Constants.ts.
+  assert.fieldEquals("Domain", pathId, "expiryDate", "2002419200");
+});
+
+test("late-linked path has no Domain row", () => {
+  dataSourceMock.setNetwork("sepolia");
+
+  const LATE_CHILD_REGISTRY = "0x777777777777777777777777777777777777777a";
+
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      LATE_CHILD_REGISTRY,
+      slotToken(1),
+      Bytes.fromI32(90),
+      "orphan"
+    )
+  );
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ROOT_REGISTRY,
+      slotToken(1),
+      Bytes.fromI32(91),
+      "late2"
+    )
+  );
+  handleSubregistryUpdated(
+    createSubregistryUpdatedEvent(
+      ROOT_REGISTRY,
+      slotToken(1),
+      LATE_CHILD_REGISTRY
+    )
+  );
+
+  let late2PathId = pathNamehash(
+    Bytes.fromHexString(ROOT_NAMEHASH),
+    Bytes.fromI32(91)
+  ).toHexString();
+  let wouldBeOrphanPathId = pathNamehash(
+    Bytes.fromHexString(late2PathId),
+    Bytes.fromI32(90)
+  ).toHexString();
+
+  assert.notInStore("Domain", wouldBeOrphanPathId);
+});
+
+test("re-registration on the same slot updates the existing Domain row's owner", () => {
+  dataSourceMock.setNetwork("sepolia");
+
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ROOT_REGISTRY,
+      slotToken(1),
+      Bytes.fromI32(100),
+      "changeling",
+      OWNER
+    )
+  );
+  let pathId = pathNamehash(
+    Bytes.fromHexString(ROOT_NAMEHASH),
+    Bytes.fromI32(100)
+  ).toHexString();
+  assert.fieldEquals(
+    "Domain",
+    pathId,
+    "owner",
+    Address.fromString(OWNER).toHexString()
+  );
+
+  handleLabelUnregistered(
+    createLabelUnregisteredEvent(ROOT_REGISTRY, slotToken(1))
+  );
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ROOT_REGISTRY,
+      slotToken(1),
+      Bytes.fromI32(100),
+      "changeling",
+      OWNER_2
+    )
+  );
+
+  assert.fieldEquals(
+    "Domain",
+    pathId,
+    "owner",
+    Address.fromString(OWNER_2).toHexString()
+  );
 });
