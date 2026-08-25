@@ -16,12 +16,19 @@ import { getOrCreateRegistry, getOrCreateRootNamespace } from "./ensv2Discovery"
 import { nameSlotId, resourceId, toSlotId, tokenEntityId } from "./ensv2Utils";
 import { checkValidLabel, createEventID, createOrLoadAccount } from "./utils";
 import {
+  getEthRegistryAddress,
+  getV2GracePeriod,
+  isMigrationController,
+} from "./ensv2Constants";
+import { correctMigratedLegacyOwner, getEthDomainId } from "./ensv2Domain";
+import {
   handleParentUpdated as handleParentUpdatedPaths,
   handleResolverUpdated as handleResolverUpdatedPaths,
   handleSubregistryUpdated as handleSubregistryUpdatedPaths,
   materializePathsForSlot,
 } from "./ensv2Paths";
 import {
+  Domain,
   ENSv2LabelRegistered,
   ENSv2LabelRenewed,
   ENSv2LabelUnregistered,
@@ -31,6 +38,7 @@ import {
   ENSv2Token,
   ENSv2TokenRegenerated,
   ENSv2TokenTransferred,
+  Registration,
 } from "./types/schema";
 
 import {
@@ -84,11 +92,12 @@ export function handleLabelRegistered(event: LabelRegistered): void {
     slot.label = event.params.label;
   }
   let account = createOrLoadAccount(event.params.owner.toHexString());
+  let isV1Migration = isMigrationController(event.params.sender);
   slot.owner = account.id;
   slot.registrant = account.id;
   slot.status = "REGISTERED";
   slot.expiryDate = event.params.expiry;
-  slot.migratedFromV1 = false; // real check is Phase 6
+  slot.migratedFromV1 = isV1Migration;
   slot.updatedAt = event.block.timestamp;
   slot.updatedAtBlock = event.block.number;
   slot.save();
@@ -102,14 +111,14 @@ export function handleLabelRegistered(event: LabelRegistered): void {
   history.expiryDate = event.params.expiry;
   history.isReRegistration = isReRegistration;
   history.sender = event.params.sender;
-  history.isV1Migration = false; // real check is Phase 6
+  history.isV1Migration = isV1Migration;
   history.save();
 
   // The other bounded loop (docs/plan.md Phase 4): materialise a path for
   // each namespace this registry currently, actively serves. Registry row
   // is guaranteed to exist by bootstrapRegistry above.
   let registry = ENSv2Registry.load(registryId)!;
-  materializePathsForSlot(registry, slot, event);
+  materializePathsForSlot(registry, slot, event, isV1Migration);
 }
 
 export function handleLabelReserved(event: LabelReserved): void {
@@ -191,12 +200,34 @@ export function handleExpiryUpdated(event: ExpiryUpdated): void {
     return;
   }
 
-  // Legacy Domain/Registration sync (gated on status == REGISTERED, plus
-  // v2GracePeriod) is Phase 6 scope — this is pure ENSv2-side state.
   slot.expiryDate = event.params.newExpiry;
   slot.updatedAt = event.block.timestamp;
   slot.updatedAtBlock = event.block.number;
   slot.save();
+
+  // Legacy .eth sync — REGISTERED only. ExpiryUpdated also fires for
+  // premigrated RESERVED names renewed through ETHRenewerV1, whose renew()
+  // already calls the authoritative v1 BaseRegistrarImplementation.renew()
+  // in the same transaction; the existing v1 handlers correctly maintain
+  // Registration/Domain for those from that event. Syncing the v2 side too
+  // for a RESERVED slot would race with, and could overwrite, the correct
+  // v1-derived values — so do nothing there (docs/plan.md Phase 6).
+  let isEth = slot.registry == getEthRegistryAddress().toHexString();
+  if (isEth && slot.status == "REGISTERED") {
+    let registration = Registration.load(slot.labelhash.toHexString());
+    if (registration != null) {
+      registration.expiryDate = event.params.newExpiry;
+      registration.save();
+    }
+    let domainId = getEthDomainId(slot);
+    if (domainId !== null) {
+      let domain = Domain.load(domainId as string);
+      if (domain != null) {
+        domain.expiryDate = event.params.newExpiry.plus(getV2GracePeriod());
+        domain.save();
+      }
+    }
+  }
 
   let history = new ENSv2LabelRenewed(createEventID(event));
   history.slot = slot.id;
@@ -388,6 +419,20 @@ function makeTokenTransfer(
       slot.owner = toAccount.id;
       slot.updatedAtBlock = block.number;
       slot.save();
+
+      // Subsequent transfers on a migrated slot keep writing to the same
+      // legacy field the migration event corrected (docs/plan.md Phase 6).
+      let isEth = slot.registry == getEthRegistryAddress().toHexString();
+      if (slot.migratedFromV1 && isEth) {
+        let domainId = getEthDomainId(slot);
+        if (domainId !== null) {
+          correctMigratedLegacyOwner(
+            domainId as string,
+            slot.labelhash.toHexString(),
+            toAccount.id
+          );
+        }
+      }
     }
 
     let history = new ENSv2TokenTransferred(eventId);

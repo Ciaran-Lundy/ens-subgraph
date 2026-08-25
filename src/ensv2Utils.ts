@@ -2,7 +2,8 @@
 // specific to the registry-scoped ENSv2 entity model (concat,
 // checkValidLabel, createEventID, uint256ToByteArray, createOrLoadAccount,
 // createOrLoadDomain) — do not duplicate those here.
-import { Address, BigInt, Bytes } from "@graphprotocol/graph-ts";
+import { Address, BigInt, Bytes, crypto } from "@graphprotocol/graph-ts";
+import { concat } from "./utils";
 
 // 2^32, used to zero the lower 32 bits of a BigInt without needing
 // BigInt.bitAnd/bitXor (not available in the installed graph-ts 0.31.0).
@@ -64,4 +65,15 @@ export function namespaceLinkId(
     .concat(parentSlotId.toString())
     .concat("-")
     .concat(childAddress);
+}
+
+// ENSv2NamePath.id = namehash hex (schema's own ID comment), computed the
+// same way as ensRegistry.ts::makeSubnode's keccak256(concat(parentNode,
+// labelHash)) — here parentNode is a namespace's baseNamehash. Lives here
+// (not ensv2Paths.ts, where it originated) because ensv2Domain.ts also
+// needs it (to recover a slot's Domain id at transfer time, Phase 6) and
+// ensv2Paths.ts already imports from ensv2Domain.ts — putting it in this
+// dependency-free utils file avoids a circular import either way.
+export function pathNamehash(baseNamehash: Bytes, labelhash: Bytes): Bytes {
+  return Bytes.fromByteArray(crypto.keccak256(concat(baseNamehash, labelhash)));
 }

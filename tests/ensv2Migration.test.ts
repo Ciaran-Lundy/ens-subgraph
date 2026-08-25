@@ -1,0 +1,633 @@
+import { Address, BigInt, Bytes, ethereum } from "@graphprotocol/graph-ts";
+import {
+  afterEach,
+  assert,
+  clearStore,
+  dataSourceMock,
+  newMockEvent,
+  test,
+} from "matchstick-as/assembly/index";
+import {
+  handleExpiryUpdated,
+  handleLabelRegistered,
+  handleLabelReserved,
+  handleSubregistryUpdated,
+  handleTokenResource,
+  handleTransferSingle,
+} from "../src/ensv2Registry";
+import { nameSlotId, pathNamehash, toSlotId } from "../src/ensv2Utils";
+import { Domain, Registration, WrappedDomain } from "../src/types/schema";
+import {
+  ExpiryUpdated,
+  LabelRegistered,
+  LabelReserved,
+  SubregistryUpdated,
+  TokenResource,
+  TransferSingle,
+} from "../src/types/RootRegistry/PermissionedRegistry";
+
+const ROOT_REGISTRY = "0xc960F7217d3643B525Ef36Bec8Adf86953CD9aB8";
+const ETH_REGISTRY = "0xDEDB92913A25abE1f7BCDD85D8A344a43B398B67";
+const OWNER = "0x89205A3A3b2A69De6Dbf7f01ED13B2108B2c43e7";
+const OWNER_2 = "0xF0205A3A3b2A69De6Dbf7f01ED13B2108B2c4321";
+const SENDER = "0x11111111111111111111111111111111111111aa";
+const GRAVEYARD = "0x0000000000000000000000000000000000dead01";
+const LOCKED_MIGRATION_CONTROLLER = "0xF91c34ED840889Ed96F806f882fD50506A336Edb";
+const UNLOCKED_MIGRATION_CONTROLLER = "0x056138Ef5660F7113a3B0ADC08ac3683310e7FBC";
+const ROOT_NAMEHASH =
+  "0x0000000000000000000000000000000000000000000000000000000000000000";
+
+const TWO_POW_32 = BigInt.fromI64(4294967296);
+function slotToken(n: i32): BigInt {
+  return TWO_POW_32.times(BigInt.fromI32(n));
+}
+
+const createLabelRegisteredEvent = (
+  registryAddress: string,
+  tokenId: BigInt,
+  labelHash: Bytes,
+  label: string,
+  owner: string = OWNER,
+  sender: string = SENDER
+): LabelRegistered => {
+  let mockEvent = newMockEvent();
+  let event = new LabelRegistered(
+    Address.fromString(registryAddress),
+    mockEvent.logIndex,
+    mockEvent.transactionLogIndex,
+    mockEvent.logType,
+    mockEvent.block,
+    mockEvent.transaction,
+    mockEvent.parameters,
+    mockEvent.receipt
+  );
+
+  event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam(
+      "tokenId",
+      ethereum.Value.fromUnsignedBigInt(tokenId)
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "labelHash",
+      ethereum.Value.fromFixedBytes(labelHash)
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam("label", ethereum.Value.fromString(label))
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "owner",
+      ethereum.Value.fromAddress(Address.fromString(owner))
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "expiry",
+      ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(2000000000))
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "sender",
+      ethereum.Value.fromAddress(Address.fromString(sender))
+    )
+  );
+  return event;
+};
+
+const createLabelReservedEvent = (
+  registryAddress: string,
+  tokenId: BigInt,
+  labelHash: Bytes,
+  label: string
+): LabelReserved => {
+  let mockEvent = newMockEvent();
+  let event = new LabelReserved(
+    Address.fromString(registryAddress),
+    mockEvent.logIndex,
+    mockEvent.transactionLogIndex,
+    mockEvent.logType,
+    mockEvent.block,
+    mockEvent.transaction,
+    mockEvent.parameters,
+    mockEvent.receipt
+  );
+
+  event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam(
+      "tokenId",
+      ethereum.Value.fromUnsignedBigInt(tokenId)
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "labelHash",
+      ethereum.Value.fromFixedBytes(labelHash)
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam("label", ethereum.Value.fromString(label))
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "expiry",
+      ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(2000000000))
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "sender",
+      ethereum.Value.fromAddress(Address.fromString(SENDER))
+    )
+  );
+  return event;
+};
+
+const createSubregistryUpdatedEvent = (
+  registryAddress: string,
+  tokenId: BigInt,
+  subregistry: string
+): SubregistryUpdated => {
+  let mockEvent = newMockEvent();
+  let event = new SubregistryUpdated(
+    Address.fromString(registryAddress),
+    mockEvent.logIndex,
+    mockEvent.transactionLogIndex,
+    mockEvent.logType,
+    mockEvent.block,
+    mockEvent.transaction,
+    mockEvent.parameters,
+    mockEvent.receipt
+  );
+
+  event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam(
+      "tokenId",
+      ethereum.Value.fromUnsignedBigInt(tokenId)
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "subregistry",
+      ethereum.Value.fromAddress(Address.fromString(subregistry))
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "sender",
+      ethereum.Value.fromAddress(Address.fromString(SENDER))
+    )
+  );
+  return event;
+};
+
+const createTokenResourceEvent = (
+  registryAddress: string,
+  tokenId: BigInt,
+  resource: BigInt
+): TokenResource => {
+  let mockEvent = newMockEvent();
+  let event = new TokenResource(
+    Address.fromString(registryAddress),
+    mockEvent.logIndex,
+    mockEvent.transactionLogIndex,
+    mockEvent.logType,
+    mockEvent.block,
+    mockEvent.transaction,
+    mockEvent.parameters,
+    mockEvent.receipt
+  );
+
+  event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam(
+      "tokenId",
+      ethereum.Value.fromUnsignedBigInt(tokenId)
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "resource",
+      ethereum.Value.fromUnsignedBigInt(resource)
+    )
+  );
+  return event;
+};
+
+const createTransferSingleEvent = (
+  registryAddress: string,
+  tokenId: BigInt,
+  from: string,
+  to: string
+): TransferSingle => {
+  let mockEvent = newMockEvent();
+  let event = new TransferSingle(
+    Address.fromString(registryAddress),
+    mockEvent.logIndex,
+    mockEvent.transactionLogIndex,
+    mockEvent.logType,
+    mockEvent.block,
+    mockEvent.transaction,
+    mockEvent.parameters,
+    mockEvent.receipt
+  );
+
+  event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam(
+      "operator",
+      ethereum.Value.fromAddress(Address.fromString(from))
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "from",
+      ethereum.Value.fromAddress(Address.fromString(from))
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "to",
+      ethereum.Value.fromAddress(Address.fromString(to))
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "id",
+      ethereum.Value.fromUnsignedBigInt(tokenId)
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "value",
+      ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1))
+    )
+  );
+  return event;
+};
+
+const createExpiryUpdatedEvent = (
+  registryAddress: string,
+  tokenId: BigInt,
+  newExpiry: BigInt
+): ExpiryUpdated => {
+  let mockEvent = newMockEvent();
+  let event = new ExpiryUpdated(
+    Address.fromString(registryAddress),
+    mockEvent.logIndex,
+    mockEvent.transactionLogIndex,
+    mockEvent.logType,
+    mockEvent.block,
+    mockEvent.transaction,
+    mockEvent.parameters,
+    mockEvent.receipt
+  );
+
+  event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam(
+      "tokenId",
+      ethereum.Value.fromUnsignedBigInt(tokenId)
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "newExpiry",
+      ethereum.Value.fromUnsignedBigInt(newExpiry)
+    )
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "sender",
+      ethereum.Value.fromAddress(Address.fromString(SENDER))
+    )
+  );
+  return event;
+};
+
+// Links ETHRegistry under root's "eth" slot so ETHRegistry has an active
+// namespace and materializePathsForSlot actually produces paths/domains for
+// registrations inside it — mirrors tests/ensv2Paths.test.ts's .eth setup.
+// Returns the "eth" ENSv2NamePath's own namehash (ETHRegistry's namespace
+// baseNamehash), needed to compute domain/registration ids for a given
+// migrated label.
+function setupEthNamespace(): Bytes {
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ROOT_REGISTRY,
+      slotToken(999),
+      Bytes.fromI32(999),
+      "eth"
+    )
+  );
+  handleSubregistryUpdated(
+    createSubregistryUpdatedEvent(ROOT_REGISTRY, slotToken(999), ETH_REGISTRY)
+  );
+  return pathNamehash(Bytes.fromHexString(ROOT_NAMEHASH), Bytes.fromI32(999));
+}
+
+afterEach(() => {
+  dataSourceMock.resetValues();
+  clearStore();
+});
+
+test("unwrapped migration corrects registrant only, never owner, and a post-migration transfer keeps tracking it", () => {
+  dataSourceMock.setNetwork("sepolia");
+  let ethBaseNamehash = setupEthNamespace();
+
+  let labelHash = Bytes.fromI32(200);
+  let domainId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
+  let registrationId = labelHash.toHexString();
+
+  // Pre-seed legacy state as if this were a real pre-migration ENSv1 name.
+  let domain = new Domain(domainId);
+  domain.owner = GRAVEYARD;
+  domain.registrant = GRAVEYARD;
+  domain.isMigrated = true;
+  domain.subdomainCount = 0;
+  domain.createdAt = BigInt.fromI32(0);
+  domain.save();
+
+  let registration = new Registration(registrationId);
+  registration.domain = domainId;
+  registration.registrationDate = BigInt.fromI32(0);
+  registration.expiryDate = BigInt.fromI32(1000000000);
+  registration.registrant = GRAVEYARD;
+  registration.save();
+
+  let tokenId = slotToken(1);
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ETH_REGISTRY,
+      tokenId,
+      labelHash,
+      "unwrapped",
+      OWNER,
+      LOCKED_MIGRATION_CONTROLLER
+    )
+  );
+
+  let slotId = nameSlotId(
+    Address.fromString(ETH_REGISTRY).toHexString(),
+    toSlotId(tokenId)
+  );
+  assert.fieldEquals("ENSv2NameSlot", slotId, "migratedFromV1", "true");
+
+  assert.fieldEquals(
+    "Domain",
+    domainId,
+    "registrant",
+    Address.fromString(OWNER).toHexString()
+  );
+  assert.fieldEquals(
+    "Registration",
+    registrationId,
+    "registrant",
+    Address.fromString(OWNER).toHexString()
+  );
+  // domain.owner is never touched by migration correction.
+  assert.fieldEquals("Domain", domainId, "owner", GRAVEYARD);
+
+  // Post-migration transfer keeps the same legacy field tracking ownership.
+  handleTokenResource(
+    createTokenResourceEvent(ETH_REGISTRY, tokenId, BigInt.fromI32(1))
+  );
+  handleTransferSingle(
+    createTransferSingleEvent(ETH_REGISTRY, tokenId, OWNER, OWNER_2)
+  );
+
+  assert.fieldEquals(
+    "Domain",
+    domainId,
+    "registrant",
+    Address.fromString(OWNER_2).toHexString()
+  );
+  assert.fieldEquals(
+    "Registration",
+    registrationId,
+    "registrant",
+    Address.fromString(OWNER_2).toHexString()
+  );
+  assert.fieldEquals("Domain", domainId, "owner", GRAVEYARD);
+});
+
+test("wrapped-unlocked migration (no WrappedDomain) behaves the same as unwrapped", () => {
+  dataSourceMock.setNetwork("sepolia");
+  let ethBaseNamehash = setupEthNamespace();
+
+  let labelHash = Bytes.fromI32(201);
+  let domainId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
+  let registrationId = labelHash.toHexString();
+
+  let domain = new Domain(domainId);
+  domain.owner = GRAVEYARD;
+  domain.registrant = GRAVEYARD;
+  domain.isMigrated = true;
+  domain.subdomainCount = 0;
+  domain.createdAt = BigInt.fromI32(0);
+  domain.save();
+
+  let registration = new Registration(registrationId);
+  registration.domain = domainId;
+  registration.registrationDate = BigInt.fromI32(0);
+  registration.expiryDate = BigInt.fromI32(1000000000);
+  registration.registrant = GRAVEYARD;
+  registration.save();
+  // No WrappedDomain row — already unwrapped earlier in the same tx.
+
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ETH_REGISTRY,
+      slotToken(2),
+      labelHash,
+      "wrappedunlocked",
+      OWNER,
+      UNLOCKED_MIGRATION_CONTROLLER
+    )
+  );
+
+  assert.fieldEquals(
+    "Domain",
+    domainId,
+    "registrant",
+    Address.fromString(OWNER).toHexString()
+  );
+  assert.fieldEquals(
+    "Registration",
+    registrationId,
+    "registrant",
+    Address.fromString(OWNER).toHexString()
+  );
+  assert.fieldEquals("Domain", domainId, "owner", GRAVEYARD);
+  assert.notInStore("WrappedDomain", domainId);
+});
+
+test("wrapped-locked migration corrects wrappedOwner only, leaves registrant/owner untouched, and a post-migration transfer keeps tracking it", () => {
+  dataSourceMock.setNetwork("sepolia");
+  let ethBaseNamehash = setupEthNamespace();
+
+  let labelHash = Bytes.fromI32(202);
+  let domainId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
+  let registrationId = labelHash.toHexString();
+
+  let domain = new Domain(domainId);
+  domain.owner = GRAVEYARD;
+  domain.registrant = GRAVEYARD;
+  domain.wrappedOwner = GRAVEYARD;
+  domain.isMigrated = true;
+  domain.subdomainCount = 0;
+  domain.createdAt = BigInt.fromI32(0);
+  domain.save();
+
+  let registration = new Registration(registrationId);
+  registration.domain = domainId;
+  registration.registrationDate = BigInt.fromI32(0);
+  registration.expiryDate = BigInt.fromI32(1000000000);
+  registration.registrant = GRAVEYARD;
+  registration.save();
+
+  let wrappedDomain = new WrappedDomain(domainId);
+  wrappedDomain.domain = domainId;
+  wrappedDomain.expiryDate = BigInt.fromI32(1000000000);
+  wrappedDomain.fuses = 65536; // PARENT_CANNOT_CONTROL — "locked"
+  wrappedDomain.owner = GRAVEYARD;
+  wrappedDomain.save();
+
+  let tokenId = slotToken(3);
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ETH_REGISTRY,
+      tokenId,
+      labelHash,
+      "wrappedlocked",
+      OWNER,
+      LOCKED_MIGRATION_CONTROLLER
+    )
+  );
+
+  assert.fieldEquals(
+    "WrappedDomain",
+    domainId,
+    "owner",
+    Address.fromString(OWNER).toHexString()
+  );
+  assert.fieldEquals(
+    "Domain",
+    domainId,
+    "wrappedOwner",
+    Address.fromString(OWNER).toHexString()
+  );
+  // registrant/owner are untouched by the wrapped branch.
+  assert.fieldEquals("Domain", domainId, "registrant", GRAVEYARD);
+  assert.fieldEquals("Registration", registrationId, "registrant", GRAVEYARD);
+  assert.fieldEquals("Domain", domainId, "owner", GRAVEYARD);
+
+  handleTokenResource(
+    createTokenResourceEvent(ETH_REGISTRY, tokenId, BigInt.fromI32(2))
+  );
+  handleTransferSingle(
+    createTransferSingleEvent(ETH_REGISTRY, tokenId, OWNER, OWNER_2)
+  );
+
+  assert.fieldEquals(
+    "WrappedDomain",
+    domainId,
+    "owner",
+    Address.fromString(OWNER_2).toHexString()
+  );
+  assert.fieldEquals(
+    "Domain",
+    domainId,
+    "wrappedOwner",
+    Address.fromString(OWNER_2).toHexString()
+  );
+  assert.fieldEquals("Domain", domainId, "registrant", GRAVEYARD);
+});
+
+test("a non-migration registration is not flagged", () => {
+  dataSourceMock.setNetwork("sepolia");
+  setupEthNamespace();
+
+  let tokenId = slotToken(4);
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ETH_REGISTRY,
+      tokenId,
+      Bytes.fromI32(203),
+      "ordinary",
+      OWNER,
+      SENDER
+    )
+  );
+
+  let slotId = nameSlotId(
+    Address.fromString(ETH_REGISTRY).toHexString(),
+    toSlotId(tokenId)
+  );
+  assert.fieldEquals("ENSv2NameSlot", slotId, "migratedFromV1", "false");
+});
+
+test("handleExpiryUpdated on a REGISTERED .eth slot syncs raw Registration.expiryDate and grace-inclusive Domain.expiryDate", () => {
+  dataSourceMock.setNetwork("sepolia");
+  let ethBaseNamehash = setupEthNamespace();
+
+  let labelHash = Bytes.fromI32(210);
+  let domainId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
+  let registrationId = labelHash.toHexString();
+  let tokenId = slotToken(5);
+
+  handleLabelRegistered(
+    createLabelRegisteredEvent(ETH_REGISTRY, tokenId, labelHash, "renewme")
+  );
+
+  let newExpiry = BigInt.fromI32(2100000000);
+  handleExpiryUpdated(createExpiryUpdatedEvent(ETH_REGISTRY, tokenId, newExpiry));
+
+  assert.fieldEquals("Registration", registrationId, "expiryDate", "2100000000");
+  // v2GracePeriod is 2,419,200s (28 days) per src/ensv2Constants.ts.
+  assert.fieldEquals("Domain", domainId, "expiryDate", "2102419200");
+});
+
+test("handleExpiryUpdated on a RESERVED slot leaves legacy fields provably unchanged", () => {
+  dataSourceMock.setNetwork("sepolia");
+  let ethBaseNamehash = setupEthNamespace();
+
+  let labelHash = Bytes.fromI32(211);
+  let domainId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
+  let registrationId = labelHash.toHexString();
+  let tokenId = slotToken(6);
+
+  // Pre-seed Domain/Registration with a known expiry, as ETHRenewerV1's own
+  // v1-authoritative path would have already set correctly — this must
+  // survive untouched.
+  let domain = new Domain(domainId);
+  domain.owner = OWNER;
+  domain.isMigrated = true;
+  domain.subdomainCount = 0;
+  domain.createdAt = BigInt.fromI32(0);
+  domain.expiryDate = BigInt.fromI32(1500000000);
+  domain.save();
+
+  let registration = new Registration(registrationId);
+  registration.domain = domainId;
+  registration.registrationDate = BigInt.fromI32(0);
+  registration.expiryDate = BigInt.fromI32(1400000000);
+  registration.registrant = OWNER;
+  registration.save();
+
+  handleLabelReserved(
+    createLabelReservedEvent(ETH_REGISTRY, tokenId, labelHash, "reserveme")
+  );
+  handleExpiryUpdated(
+    createExpiryUpdatedEvent(ETH_REGISTRY, tokenId, BigInt.fromI32(2100000000))
+  );
+
+  assert.fieldEquals("Registration", registrationId, "expiryDate", "1400000000");
+  assert.fieldEquals("Domain", domainId, "expiryDate", "1500000000");
+});

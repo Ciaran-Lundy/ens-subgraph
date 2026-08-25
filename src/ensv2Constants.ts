@@ -1,20 +1,30 @@
 // Per-network ENSv2 constants that networks.json has no room for (it only
 // covers data-source address/startBlock). Branches on dataSource.network().
-//
-// Not called by anything until Phase 6 (registrar & migration handling) —
-// values below are TODO pending docs/plan.md's open prerequisites.
 import { Address, BigInt, dataSource } from "@graphprotocol/graph-ts";
 
 export function getMigrationControllers(): Address[] {
   let network = dataSource.network();
   if (network == "sepolia") {
-    // TODO(Phase 6): LockedMigrationController / UnlockedMigrationController
-    // addresses for the Sepolia deployment matching this subgraph's
-    // RootRegistry/ETHRegistry addresses. docs/plan.md prerequisite #5 —
-    // still open as of Phase 1; do not guess these.
-    return [];
+    return [
+      Address.fromString("0xF91c34ED840889Ed96F806f882fD50506A336Edb"), // LockedMigrationController
+      Address.fromString("0x056138Ef5660F7113a3B0ADC08ac3683310e7FBC"), // UnlockedMigrationController
+    ];
   }
   return [];
+}
+
+// Manual loop with .equals() rather than Array<Address>.includes() — this
+// codebase has repeatedly hit real AssemblyScript compiler issues around
+// reference-type comparisons in unusual contexts, and .equals() is the
+// already-proven-safe pattern used throughout (see kindForAddress).
+export function isMigrationController(sender: Address): boolean {
+  let controllers = getMigrationControllers();
+  for (let i = 0; i < controllers.length; i++) {
+    if (controllers[i].equals(sender)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function getV2GracePeriod(): BigInt {

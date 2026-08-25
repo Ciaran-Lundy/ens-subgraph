@@ -13,8 +13,7 @@ import {
   handleResolverUpdated,
   handleSubregistryUpdated,
 } from "../src/ensv2Registry";
-import { pathNamehash } from "../src/ensv2Paths";
-import { namespaceId } from "../src/ensv2Utils";
+import { namespaceId, pathNamehash } from "../src/ensv2Utils";
 import { ENSv2NameSlot } from "../src/types/schema";
 import {
   LabelRegistered,

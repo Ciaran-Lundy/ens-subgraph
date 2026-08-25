@@ -15,14 +15,15 @@
 //
 // Get either loop direction backwards and the proposal's core safety
 // property (no unbounded recursive backfill) breaks.
-import { Address, Bytes, crypto, ethereum, log } from "@graphprotocol/graph-ts";
+import { Address, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 
-import { checkValidLabel, concat, createEventID } from "./utils";
+import { checkValidLabel, createEventID } from "./utils";
 import {
   isZeroAddress,
   nameSlotId,
   namespaceId,
   namespaceLinkId,
+  pathNamehash,
   pathNamespaceIndexId,
   registryNamespaceIndexId,
   slotPathIndexId,
@@ -51,12 +52,6 @@ import {
   SubregistryUpdated,
 } from "./types/RootRegistry/PermissionedRegistry";
 
-// Exported so tests can compute the same deterministic path id
-// (ENSv2NamePath.id = namehash hex) without needing to enumerate
-// derivedFrom fields, which matchstick-as's store API doesn't support.
-export function pathNamehash(baseNamehash: Bytes, labelhash: Bytes): Bytes {
-  return Bytes.fromByteArray(crypto.keccak256(concat(baseNamehash, labelhash)));
-}
 
 function appendSlotPathIndex(slot: ENSv2NameSlot, path: ENSv2NamePath): void {
   let index = new ENSv2SlotPathIndex(slotPathIndexId(slot.id, slot.pathCount));
@@ -305,7 +300,8 @@ export function handleSubregistryUpdated(event: SubregistryUpdated): void {
 export function materializePathsForSlot(
   registry: ENSv2Registry,
   slot: ENSv2NameSlot,
-  event: LabelRegistered
+  event: LabelRegistered,
+  isV1Migration: boolean
 ): void {
   for (let i = 0; i < registry.namespaceCount; i++) {
     let index = ENSv2RegistryNamespaceIndex.load(
@@ -331,7 +327,7 @@ export function materializePathsForSlot(
       path.save();
     }
 
-    projectPathToDomain(path, slot, event);
+    projectPathToDomain(path, slot, event, isV1Migration);
   }
 }
 
