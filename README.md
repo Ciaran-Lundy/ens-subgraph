@@ -94,13 +94,13 @@ The ENSv2 upgrade added a second, parallel set of entities (`ENSv2Registry`, `EN
 - **`Resolver`/`ENSv2Resolver` remain direct-record projections.** They reflect records set directly on a resolver address + node, but are not authoritative for *effective* resolution when an ENSv2 alias is active. Check `ENSv2ResolverAlias` for the name you're resolving, or call `PermissionedResolver.resolve()` directly for exact resolver behavior.
 - **Migrated `.eth` names carry both legacy and ENSv2 state.** Once a migrated name reaches `REGISTERED` status, ENSv2 events keep the legacy `Registration`/`Domain`/`WrappedDomain` owner and expiry fields in sync going forward — `domain.owner` itself is never corrected (it reflects the real, retired ENSv1 registry state), only `wrappedOwner`/`registrant`. `Registration.expiryDate` stays the raw ENSv2 expiry; `Domain.expiryDate` includes the ENSv2 grace period on top of it.
 
-Note on query field casing: graph-node derives root query field names from entity type names by lowercasing only the *first* character, not full camelCase conversion. So `ENSv2Registry` becomes `eNSv2Registry`/`eNSv2Registries`, not `ensv2Registry` — every entity type in this schema prefixed `ENSv2...` follows that same, slightly surprising pattern below.
+Note on query field casing: graph-node derives root query field names from entity type names by lowercasing the whole `ENSv2` prefix, not just the first character — so `ENSv2Registry` becomes `ensv2Registry`/`ensv2Registries`, confirmed directly against a live deployment's introspection schema.
 
 ## Example query: registry → namespace → slot graph
 
 ```graphql
 {
-  eNSv2Registries(where: { kind: ETH }) {
+  ensv2Registries(where: { kind: ETH }) {
     id
     kind
     namespaceCount
@@ -110,7 +110,7 @@ Note on query field casing: graph-node derives root query field names from entit
       active
     }
   }
-  eNSv2NameSlots(where: { status: REGISTERED }, first: 10) {
+  ensv2NameSlots(where: { status: REGISTERED }, first: 10) {
     id
     label
     owner {
@@ -134,7 +134,7 @@ Note on query field casing: graph-node derives root query field names from entit
 
 ```graphql
 {
-  eNSv2Resource(id: "<registry-address>-<resource>") {
+  ensv2Resource(id: "<registry-address>-<resource>") {
     id
     slot {
       id
@@ -142,7 +142,7 @@ Note on query field casing: graph-node derives root query field names from entit
     }
     active
   }
-  eNSv2RoleAssignments(where: { resourceEntity: "<registry-address>-<resource>" }) {
+  ensv2RoleAssignments(where: { resourceEntity: "<registry-address>-<resource>" }) {
     id
     account {
       id
@@ -156,7 +156,7 @@ Note on query field casing: graph-node derives root query field names from entit
 
 ```graphql
 {
-  eNSv2ResolverAliases(where: { active: true }) {
+  ensv2ResolverAliases(where: { active: true }) {
     id
     fromNameDecoded
     toNameDecoded
