@@ -93,8 +93,8 @@ type NewResolver implements DomainEvent @entity(immutable: true) {
   blockNumber: Int!
   "The transaction hash of the transaction that triggered the event"
   transactionID: Bytes!
-  "The new resolver contract address associated with the domain"
-  resolver: Resolver!
+  "The new resolver contract address associated with the domain. Null when the resolver was cleared to address(0) — there is no Resolver entity for the zero address, so this can never point at a real one; leaving it unset (rather than storing an id that resolves to nothing) matches Domain.resolver's own handling of the same case."
+  resolver: Resolver
 }
 
 type NewTTL implements DomainEvent @entity(immutable: true) {

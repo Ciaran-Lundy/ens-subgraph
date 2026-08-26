@@ -204,7 +204,15 @@ export function handleNewResolver(event: NewResolverEvent): void {
   domainEvent.blockNumber = event.block.number.toI32();
   domainEvent.transactionID = event.transaction.hash;
   domainEvent.domain = node;
-  domainEvent.resolver = id ? id : EMPTY_ADDRESS;
+  // `id` is null exactly when the resolver was cleared to address(0) — no
+  // Resolver entity exists for the zero address, so storing EMPTY_ADDRESS
+  // here (as this line used to) would be a non-null relation pointing at
+  // an id that never resolves to anything, which makes graph-node itself
+  // throw "Null value resolved for non-null field" for any consumer
+  // selecting `resolver { id }` on this row (reproduced live against a
+  // real deployment, not inferred — see docs/reconciliation-report.md
+  // Finding 1). Leaving it unset instead, mirroring domain.resolver above.
+  domainEvent.resolver = id;
   domainEvent.save();
 }
 
