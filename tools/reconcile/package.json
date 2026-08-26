@@ -1,0 +1,13 @@
+{
+  "name": "ens-subgraph-reconcile",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "On-chain reconciliation checks for the ens-v-2-test Sepolia Studio deployment: fetches real events via RPC, computes expected subgraph state from the actual mapping logic, and diffs against live GraphQL query results.",
+  "scripts": {
+    "start": "node run.mjs"
+  },
+  "dependencies": {
+    "ethers": "^6.13.4"
+  }
+}
