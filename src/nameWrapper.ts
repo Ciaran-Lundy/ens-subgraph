@@ -2,13 +2,21 @@
 import { BigInt, ByteArray, Bytes, store } from "@graphprotocol/graph-ts";
 // Import event types from the registry contract ABI
 import {
+  ApprovalForAll as ApprovalForAllEvent,
+  ControllerChanged as ControllerChangedEvent,
   ExpiryExtended as ExpiryExtendedEvent,
   FusesSet as FusesSetEvent,
   NameUnwrapped as NameUnwrappedEvent,
   NameWrapped as NameWrappedEvent,
+  OwnershipTransferred as OwnershipTransferredEvent,
   TransferBatch as TransferBatchEvent,
   TransferSingle as TransferSingleEvent,
 } from "./types/NameWrapper/NameWrapper";
+import {
+  processApprovalForAll,
+  processControllerStatus,
+  processOwnershipTransferred,
+} from "./accessControl";
 // Import entity types generated from the GraphQL schema
 import {
   ExpiryExtended,
@@ -242,4 +250,33 @@ export function handleTransferBatch(event: TransferBatchEvent): void {
       to.toHex()
     );
   }
+}
+
+// NameWrapper's ApprovalForAll names the approving account `account`, not
+// `owner` (unlike ENSRegistry/BaseRegistrar) — see src/accessControl.ts.
+export function handleNameWrapperApprovalForAll(
+  event: ApprovalForAllEvent
+): void {
+  processApprovalForAll(
+    event.address,
+    event.params.account,
+    event.params.operator,
+    event.params.approved,
+    event.block
+  );
+}
+
+export function handleNameWrapperOwnershipTransferred(
+  event: OwnershipTransferredEvent
+): void {
+  processOwnershipTransferred(event.address, event.params.newOwner, event.block);
+}
+
+export function handleControllerChanged(event: ControllerChangedEvent): void {
+  processControllerStatus(
+    event.address,
+    event.params.controller,
+    event.params.active,
+    event.block
+  );
 }

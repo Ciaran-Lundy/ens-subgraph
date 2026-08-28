@@ -22,6 +22,7 @@ dataSources:
         - Domain
         - Account
         - Resolver
+        - OperatorApproval
       abis:
         - name: EnsRegistry
           file: ./abis/Registry.json
@@ -34,6 +35,8 @@ dataSources:
           handler: handleNewResolver
         - event: "NewTTL(indexed bytes32,uint64)"
           handler: handleNewTTL
+        - event: "ApprovalForAll(indexed address,indexed address,bool)"
+          handler: handleApprovalForAll
 
   - kind: ethereum/contract
     name: ENSRegistryOld
@@ -51,6 +54,7 @@ dataSources:
         - Domain
         - Account
         - Resolver
+        - OperatorApproval
       abis:
         - name: EnsRegistry
           file: ./abis/Registry.json
@@ -63,6 +67,8 @@ dataSources:
           handler: handleNewResolverOldRegistry
         - event: "NewTTL(indexed bytes32,uint64)"
           handler: handleNewTTLOldRegistry
+        - event: "ApprovalForAll(indexed address,indexed address,bool)"
+          handler: handleApprovalForAllOldRegistry
 
   - kind: ethereum/contract
     name: Resolver
@@ -130,6 +136,9 @@ dataSources:
         - NameRegistered
         - NameRenewed
         - NameTransferred
+        - OperatorApproval
+        - ContractOwnership
+        - RegistrarController
       abis:
         - name: BaseRegistrar
           file: ./abis/BaseRegistrar.json
@@ -140,6 +149,14 @@ dataSources:
           handler: handleNameRenewed
         - event: "Transfer(indexed address,indexed address,indexed uint256)"
           handler: handleNameTransferred
+        - event: "ApprovalForAll(indexed address,indexed address,bool)"
+          handler: handleBaseRegistrarApprovalForAll
+        - event: "OwnershipTransferred(indexed address,indexed address)"
+          handler: handleBaseRegistrarOwnershipTransferred
+        - event: "ControllerAdded(indexed address)"
+          handler: handleControllerAdded
+        - event: "ControllerRemoved(indexed address)"
+          handler: handleControllerRemoved
 
   - kind: ethereum/contract
     name: LegacyEthRegistrarController
@@ -155,6 +172,7 @@ dataSources:
       file: ./src/ethRegistrar.ts
       entities:
         - Registration
+        - ContractOwnership
       abis:
         - name: LegacyEthRegistrarController
           file: ./abis/LegacyEthRegistrarController.json
@@ -165,6 +183,8 @@ dataSources:
           handler: handleNameRegisteredByLegacyController
         - event: "NameRenewed(string,indexed bytes32,uint256,uint256)"
           handler: handleNameRenewedByLegacyController
+        - event: "OwnershipTransferred(indexed address,indexed address)"
+          handler: handleLegacyControllerOwnershipTransferred
 
   - kind: ethereum/contract
     name: WrappedEthRegistrarController
@@ -180,6 +200,7 @@ dataSources:
       file: ./src/ethRegistrar.ts
       entities:
         - Registration
+        - ContractOwnership
       abis:
         - name: WrappedEthRegistrarController
           file: ./abis/WrappedEthRegistrarController.json
@@ -190,6 +211,8 @@ dataSources:
           handler: handleNameRegisteredByWrappedController
         - event: "NameRenewed(string,indexed bytes32,uint256,uint256)"
           handler: handleNameRenewedByLegacyController
+        - event: "OwnershipTransferred(indexed address,indexed address)"
+          handler: handleWrappedControllerOwnershipTransferred
 
   - kind: ethereum/contract
     name: NameWrapper
@@ -205,6 +228,9 @@ dataSources:
       file: ./src/nameWrapper.ts
       entities:
         - NameWrapper
+        - OperatorApproval
+        - ContractOwnership
+        - RegistrarController
       abis:
         - name: NameWrapper
           file: ./abis/NameWrapper.json
@@ -221,6 +247,12 @@ dataSources:
           handler: handleTransferSingle
         - event: TransferBatch(indexed address,indexed address,indexed address,uint256[],uint256[])
           handler: handleTransferBatch
+        - event: "ApprovalForAll(indexed address,indexed address,bool)"
+          handler: handleNameWrapperApprovalForAll
+        - event: "OwnershipTransferred(indexed address,indexed address)"
+          handler: handleNameWrapperOwnershipTransferred
+        - event: "ControllerChanged(indexed address,bool)"
+          handler: handleControllerChanged
 
   - kind: ethereum/contract
     name: UnwrappedEthRegistrarController
@@ -236,6 +268,7 @@ dataSources:
       file: ./src/ethRegistrar.ts
       entities:
         - Registration
+        - ContractOwnership
       abis:
         - name: UnwrappedEthRegistrarController
           file: ./abis/UnwrappedEthRegistrarController.json
@@ -246,6 +279,8 @@ dataSources:
           handler: handleNameRegisteredByUnwrappedController
         - event: "NameRenewed(string,indexed bytes32,uint256,uint256,bytes32)"
           handler: handleNameRenewedByUnwrappedController
+        - event: "OwnershipTransferred(indexed address,indexed address)"
+          handler: handleUnwrappedControllerOwnershipTransferred
 
   # ---------------------------------------------------------------------
   # ENSv2 — additive data sources per docs/plan.md Phase 1.
@@ -289,6 +324,7 @@ dataSources:
         - ENSv2TokenRegenerated
         - ENSv2ResolverUpdate
         - ENSv2SubregistryUpdate
+        - OperatorApproval
       abis:
         - name: PermissionedRegistry
           file: ./abis/PermissionedRegistry.json
@@ -317,6 +353,8 @@ dataSources:
           handler: handleParentUpdated
         - event: "EACRolesChanged(indexed uint256,indexed address,uint256,uint256)"
           handler: handleEACRolesChanged
+        - event: "ApprovalForAll(indexed address,indexed address,bool)"
+          handler: handleENSv2ApprovalForAll
 
   - kind: ethereum/contract
     name: ETHRegistry
@@ -341,6 +379,7 @@ dataSources:
       file: ./src/ensv2Registrar.ts
       entities:
         - ENSv2Registration
+        - ContractOwnership
       abis:
         - name: ETHRegistrar
           file: ./abis/ETHRegistrar.json
@@ -349,6 +388,8 @@ dataSources:
           handler: handleNameRegistered
         - event: "NameRenewed(indexed uint256,string,uint64,uint64,address,indexed bytes32,uint256)"
           handler: handleNameRenewed
+        - event: "OwnershipTransferred(indexed address,indexed address)"
+          handler: handleETHRegistrarOwnershipTransferred
 
   - kind: ethereum/contract
     name: VerifiableFactory

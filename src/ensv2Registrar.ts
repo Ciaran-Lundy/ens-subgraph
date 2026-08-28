@@ -18,7 +18,9 @@ import { ENSv2Registration } from "./types/schema";
 import {
   NameRegistered,
   NameRenewed,
+  OwnershipTransferred,
 } from "./types/ETHRegistrar/ETHRegistrar";
+import { processOwnershipTransferred } from "./accessControl";
 
 export function handleNameRegistered(event: NameRegistered): void {
   let registryId = getEthRegistryAddress().toHexString();
@@ -61,4 +63,10 @@ export function handleNameRenewed(event: NameRenewed): void {
   registration.paymentToken = event.params.paymentToken;
   registration.referrer = event.params.referrer;
   registration.save();
+}
+
+export function handleETHRegistrarOwnershipTransferred(
+  event: OwnershipTransferred
+): void {
+  processOwnershipTransferred(event.address, event.params.newOwner, event.block);
 }

@@ -797,3 +797,33 @@ type ENSv2PathNamespaceIndex @entity(immutable: true) {
   index: Int!
   namespace: ENSv2Namespace!
 }
+
+# ---------------------------------------------------------------------------
+# Access & admin visibility (fix plan Phase 3, docs/ENS_Subgraph_Audit.md
+# findings 1 and 6). Current-state only, no separate history entities — see
+# docs/phases/fix-phase-3-access-admin-visibility.md Design decision 2.
+# ---------------------------------------------------------------------------
+
+type OperatorApproval @entity(immutable: false) {
+  id: ID! # contract-owner-operator
+  contract: Bytes!
+  owner: Account!
+  operator: Account!
+  approved: Boolean!
+  updatedAtBlock: BigInt!
+}
+
+type ContractOwnership @entity(immutable: false) {
+  id: ID! # contract address
+  contract: Bytes!
+  owner: Account!
+  updatedAtBlock: BigInt!
+}
+
+type RegistrarController @entity(immutable: false) {
+  id: ID! # contract-controller
+  contract: Bytes!
+  controller: Bytes!
+  active: Boolean!
+  updatedAtBlock: BigInt!
+}

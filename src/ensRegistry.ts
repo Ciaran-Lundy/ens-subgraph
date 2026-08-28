@@ -12,6 +12,7 @@ import {
 
 // Import event types from the registry contract ABI
 import {
+  ApprovalForAll as ApprovalForAllEvent,
   NewOwner as NewOwnerEvent,
   NewResolver as NewResolverEvent,
   NewTTL as NewTTLEvent,
@@ -28,6 +29,8 @@ import {
   Resolver,
   Transfer,
 } from "./types/schema";
+
+import { processApprovalForAll } from "./accessControl";
 
 const BIG_INT_ZERO = BigInt.fromI32(0);
 
@@ -267,4 +270,30 @@ export function handleTransferOldRegistry(event: TransferEvent): void {
   if (domain.isMigrated == false) {
     handleTransfer(event);
   }
+}
+
+// setApprovalForAll is scoped to the calling EOA globally, not to any
+// domain's isMigrated state (confirmed by reading ENSRegistryWithFallback.sol)
+// — so unlike NewOwner/NewResolver/NewTTL/Transfer above, both registries
+// index it unconditionally rather than gating the old one on migration status.
+export function handleApprovalForAll(event: ApprovalForAllEvent): void {
+  processApprovalForAll(
+    event.address,
+    event.params.owner,
+    event.params.operator,
+    event.params.approved,
+    event.block
+  );
+}
+
+export function handleApprovalForAllOldRegistry(
+  event: ApprovalForAllEvent
+): void {
+  processApprovalForAll(
+    event.address,
+    event.params.owner,
+    event.params.operator,
+    event.params.approved,
+    event.block
+  );
 }

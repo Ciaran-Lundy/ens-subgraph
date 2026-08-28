@@ -22,6 +22,7 @@ import {
 } from "./ensv2Constants";
 import { correctMigratedLegacyOwner, getEthDomainId } from "./ensv2Domain";
 import { processEACRolesChanged } from "./ensv2Roles";
+import { processApprovalForAll } from "./accessControl";
 import {
   handleParentUpdated as handleParentUpdatedPaths,
   handleResolverUpdated as handleResolverUpdatedPaths,
@@ -43,6 +44,7 @@ import {
 } from "./types/schema";
 
 import {
+  ApprovalForAll,
   EACRolesChanged,
   ExpiryUpdated,
   LabelRegistered,
@@ -500,6 +502,21 @@ export function handleTransferBatch(event: TransferBatch): void {
 export function handleParentUpdated(event: ParentUpdated): void {
   bootstrapRegistry(event.address, event.block);
   handleParentUpdatedPaths(event);
+}
+
+// ApprovalForAll is a global per-account operator grant, not scoped to a
+// slot/namespace, so it needs no path/materialisation interaction — unlike
+// every other handler in this file, it does no more than bootstrap the
+// registry row and delegate.
+export function handleENSv2ApprovalForAll(event: ApprovalForAll): void {
+  bootstrapRegistry(event.address, event.block);
+  processApprovalForAll(
+    event.address,
+    event.params.account,
+    event.params.operator,
+    event.params.approved,
+    event.block
+  );
 }
 
 export function handleEACRolesChanged(event: EACRolesChanged): void {

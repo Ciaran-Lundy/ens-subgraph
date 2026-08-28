@@ -19,20 +19,35 @@ import {
 
 // Import event types from the registry contract ABI
 import {
+  ApprovalForAll as BaseRegistrarApprovalForAllEvent,
+  ControllerAdded as ControllerAddedEvent,
+  ControllerRemoved as ControllerRemovedEvent,
   NameRegistered as NameRegisteredEvent,
   NameRenewed as NameRenewedEvent,
+  OwnershipTransferred as BaseRegistrarOwnershipTransferredEvent,
   Transfer as TransferEvent,
 } from "./types/BaseRegistrar/BaseRegistrar";
 
 import {
   NameRegistered as LegacyEthRegistrarController_NameRegistered,
   NameRenewed as LegacyEthRegistrarController_NameRenewed,
+  OwnershipTransferred as LegacyEthRegistrarController_OwnershipTransferred,
 } from "./types/LegacyEthRegistrarController/LegacyEthRegistrarController";
 import {
   NameRegistered as UnwrappedEthRegistrarController_NameRegistered,
   NameRenewed as UnwrappedEthRegistrarController_NameRenewed,
+  OwnershipTransferred as UnwrappedEthRegistrarController_OwnershipTransferred,
 } from "./types/UnwrappedEthRegistrarController/UnwrappedEthRegistrarController";
-import { NameRegistered as WrappedEthRegistrarController_NameRegistered } from "./types/WrappedEthRegistrarController/WrappedEthRegistrarController";
+import {
+  NameRegistered as WrappedEthRegistrarController_NameRegistered,
+  OwnershipTransferred as WrappedEthRegistrarController_OwnershipTransferred,
+} from "./types/WrappedEthRegistrarController/WrappedEthRegistrarController";
+
+import {
+  processApprovalForAll,
+  processControllerStatus,
+  processOwnershipTransferred,
+} from "./accessControl";
 
 // Import entity types generated from the GraphQL schema
 import {
@@ -231,4 +246,58 @@ export function handleNameTransferred(event: TransferEvent): void {
   transferEvent.transactionID = event.transaction.hash;
   transferEvent.newOwner = account.id;
   transferEvent.save();
+}
+
+export function handleBaseRegistrarApprovalForAll(
+  event: BaseRegistrarApprovalForAllEvent
+): void {
+  processApprovalForAll(
+    event.address,
+    event.params.owner,
+    event.params.operator,
+    event.params.approved,
+    event.block
+  );
+}
+
+export function handleBaseRegistrarOwnershipTransferred(
+  event: BaseRegistrarOwnershipTransferredEvent
+): void {
+  processOwnershipTransferred(event.address, event.params.newOwner, event.block);
+}
+
+export function handleControllerAdded(event: ControllerAddedEvent): void {
+  processControllerStatus(
+    event.address,
+    event.params.controller,
+    true,
+    event.block
+  );
+}
+
+export function handleControllerRemoved(event: ControllerRemovedEvent): void {
+  processControllerStatus(
+    event.address,
+    event.params.controller,
+    false,
+    event.block
+  );
+}
+
+export function handleLegacyControllerOwnershipTransferred(
+  event: LegacyEthRegistrarController_OwnershipTransferred
+): void {
+  processOwnershipTransferred(event.address, event.params.newOwner, event.block);
+}
+
+export function handleWrappedControllerOwnershipTransferred(
+  event: WrappedEthRegistrarController_OwnershipTransferred
+): void {
+  processOwnershipTransferred(event.address, event.params.newOwner, event.block);
+}
+
+export function handleUnwrappedControllerOwnershipTransferred(
+  event: UnwrappedEthRegistrarController_OwnershipTransferred
+): void {
+  processOwnershipTransferred(event.address, event.params.newOwner, event.block);
 }
