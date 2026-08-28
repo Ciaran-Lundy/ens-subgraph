@@ -479,6 +479,13 @@ enum ENSv2NameSlotStatus {
   REGISTERED
 }
 
+enum ENSv2ResolverResourceKind {
+  NAME
+  TEXT
+  DATA
+  ADDR
+}
+
 type ENSv2Registry @entity(immutable: false) {
   id: ID! # registry address
   address: Bytes!
@@ -502,9 +509,9 @@ type ENSv2NameSlot @entity(immutable: false) {
   currentToken: ENSv2Token
   owner: Account
   registrant: Account
-  resolverAddress: Bytes
+  resolverAddress: Bytes # denormalised convenience copy of resolver's address; null exactly when resolver is null
   resolver: ENSv2Resolver
-  subregistryAddress: Bytes
+  subregistryAddress: Bytes # denormalised convenience copy of subregistry's address; null exactly when subregistry is null
   subregistry: ENSv2Registry
   status: ENSv2NameSlotStatus!
   expiryDate: BigInt
@@ -749,7 +756,7 @@ type ENSv2ResolverResource @entity(immutable: false) {
   node: Bytes!
   name: Bytes!
   nameDecoded: String
-  kind: String! # NAME, TEXT, DATA, ADDR
+  kind: ENSv2ResolverResourceKind!
   key: String
   keyHash: Bytes
   coinType: BigInt
@@ -770,21 +777,21 @@ type ENSv2ResolverData @entity(immutable: false) {
   logIndex: BigInt!
 }
 
-type ENSv2RegistryNamespaceIndex @entity(immutable: false) {
+type ENSv2RegistryNamespaceIndex @entity(immutable: true) {
   id: ID! # registry + index
   registry: ENSv2Registry!
   index: Int!
   namespace: ENSv2Namespace!
 }
 
-type ENSv2SlotPathIndex @entity(immutable: false) {
+type ENSv2SlotPathIndex @entity(immutable: true) {
   id: ID! # slot + index
   slot: ENSv2NameSlot!
   index: Int!
   path: ENSv2NamePath!
 }
 
-type ENSv2PathNamespaceIndex @entity(immutable: false) {
+type ENSv2PathNamespaceIndex @entity(immutable: true) {
   id: ID! # path + index
   path: ENSv2NamePath!
   index: Int!

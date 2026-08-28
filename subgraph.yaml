@@ -263,7 +263,11 @@ dataSources:
       address: "0xc960F7217d3643B525Ef36Bec8Adf86953CD9aB8"
       abi: PermissionedRegistry
       startBlock: 11465480
-    mapping:
+    # Anchored — RootRegistry, ETHRegistry, and the ENSv2Registry template
+    # below all bind the same PermissionedRegistry contract type and share
+    # this exact mapping (audit finding 14: this was previously duplicated
+    # ~50 lines x3, an easy spot for the three copies to drift).
+    mapping: &ensv2RegistryMapping
       kind: ethereum/events
       apiVersion: 0.0.6
       language: wasm/assemblyscript
@@ -321,56 +325,7 @@ dataSources:
       address: "0xDEDB92913A25abE1f7BCDD85D8A344a43B398B67"
       abi: PermissionedRegistry
       startBlock: 11465480
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.6
-      language: wasm/assemblyscript
-      file: ./src/ensv2Registry.ts
-      entities:
-        - ENSv2Registry
-        - ENSv2NameSlot
-        - ENSv2Namespace
-        - ENSv2NamespaceLink
-        - ENSv2Resource
-        - ENSv2Token
-        - ENSv2NamePath
-        - ENSv2RoleAssignment
-        - ENSv2RoleChange
-        - ENSv2LabelRegistered
-        - ENSv2LabelRenewed
-        - ENSv2LabelUnregistered
-        - ENSv2TokenTransferred
-        - ENSv2TokenRegenerated
-        - ENSv2ResolverUpdate
-        - ENSv2SubregistryUpdate
-      abis:
-        - name: PermissionedRegistry
-          file: ./abis/PermissionedRegistry.json
-      eventHandlers:
-        - event: "LabelRegistered(indexed uint256,indexed bytes32,string,address,uint64,indexed address)"
-          handler: handleLabelRegistered
-        - event: "LabelReserved(indexed uint256,indexed bytes32,string,uint64,indexed address)"
-          handler: handleLabelReserved
-        - event: "LabelUnregistered(indexed uint256,indexed address)"
-          handler: handleLabelUnregistered
-        - event: "ExpiryUpdated(indexed uint256,indexed uint64,indexed address)"
-          handler: handleExpiryUpdated
-        - event: "SubregistryUpdated(indexed uint256,indexed address,indexed address)"
-          handler: handleSubregistryUpdated
-        - event: "ResolverUpdated(indexed uint256,indexed address,indexed address)"
-          handler: handleResolverUpdated
-        - event: "TokenResource(indexed uint256,indexed uint256)"
-          handler: handleTokenResource
-        - event: "TokenRegenerated(indexed uint256,indexed uint256)"
-          handler: handleTokenRegenerated
-        - event: "TransferSingle(indexed address,indexed address,indexed address,uint256,uint256)"
-          handler: handleTransferSingle
-        - event: "TransferBatch(indexed address,indexed address,indexed address,uint256[],uint256[])"
-          handler: handleTransferBatch
-        - event: "ParentUpdated(indexed address,string,indexed address)"
-          handler: handleParentUpdated
-        - event: "EACRolesChanged(indexed uint256,indexed address,uint256,uint256)"
-          handler: handleEACRolesChanged
+    mapping: *ensv2RegistryMapping
 
   - kind: ethereum/contract
     name: ETHRegistrar
@@ -457,53 +412,4 @@ templates:
     network: mainnet
     source:
       abi: PermissionedRegistry
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.6
-      language: wasm/assemblyscript
-      file: ./src/ensv2Registry.ts
-      entities:
-        - ENSv2Registry
-        - ENSv2NameSlot
-        - ENSv2Namespace
-        - ENSv2NamespaceLink
-        - ENSv2Resource
-        - ENSv2Token
-        - ENSv2NamePath
-        - ENSv2RoleAssignment
-        - ENSv2RoleChange
-        - ENSv2LabelRegistered
-        - ENSv2LabelRenewed
-        - ENSv2LabelUnregistered
-        - ENSv2TokenTransferred
-        - ENSv2TokenRegenerated
-        - ENSv2ResolverUpdate
-        - ENSv2SubregistryUpdate
-      abis:
-        - name: PermissionedRegistry
-          file: ./abis/PermissionedRegistry.json
-      eventHandlers:
-        - event: "LabelRegistered(indexed uint256,indexed bytes32,string,address,uint64,indexed address)"
-          handler: handleLabelRegistered
-        - event: "LabelReserved(indexed uint256,indexed bytes32,string,uint64,indexed address)"
-          handler: handleLabelReserved
-        - event: "LabelUnregistered(indexed uint256,indexed address)"
-          handler: handleLabelUnregistered
-        - event: "ExpiryUpdated(indexed uint256,indexed uint64,indexed address)"
-          handler: handleExpiryUpdated
-        - event: "SubregistryUpdated(indexed uint256,indexed address,indexed address)"
-          handler: handleSubregistryUpdated
-        - event: "ResolverUpdated(indexed uint256,indexed address,indexed address)"
-          handler: handleResolverUpdated
-        - event: "TokenResource(indexed uint256,indexed uint256)"
-          handler: handleTokenResource
-        - event: "TokenRegenerated(indexed uint256,indexed uint256)"
-          handler: handleTokenRegenerated
-        - event: "TransferSingle(indexed address,indexed address,indexed address,uint256,uint256)"
-          handler: handleTransferSingle
-        - event: "TransferBatch(indexed address,indexed address,indexed address,uint256[],uint256[])"
-          handler: handleTransferBatch
-        - event: "ParentUpdated(indexed address,string,indexed address)"
-          handler: handleParentUpdated
-        - event: "EACRolesChanged(indexed uint256,indexed address,uint256,uint256)"
-          handler: handleEACRolesChanged
+    mapping: *ensv2RegistryMapping

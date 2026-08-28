@@ -28,10 +28,14 @@ export function isMigrationController(sender: Address): boolean {
 }
 
 export function getV2GracePeriod(): BigInt {
-  // TODO(Phase 6): contracts-v2/contracts/script/deploy-constants.ts sets
-  // GRACE_PERIOD_V2 = 28 days (2,419,200s) at the source level. High
-  // confidence but unverified against the live ETHRenewerV1 deployment
-  // (docs/plan.md prerequisite #6) — confirm via eth_call before using.
+  // 28 days (2,419,200s) — contracts-v2/contracts/script/deploy-constants.ts
+  // sets GRACE_PERIOD_V2 to this. Verified against the live deployment, not
+  // just the source script (fix plan Phase 2): ETHRenewerV1's public
+  // GRACE_PERIOD() getter on Sepolia (0x1be516ae1b72765ae55bd5e9ca628c9058a1c622)
+  // returns 7776001, which is exactly PREMIGRATION_BONUS_PERIOD (5356801) +
+  // GRACE_PERIOD_V2 (2419200) computed from that same source file — the
+  // deployed contract's constructor args match its constants, confirmed
+  // live via eth_call, not assumed.
   return BigInt.fromI32(2419200);
 }
 

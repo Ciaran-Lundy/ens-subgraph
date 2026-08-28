@@ -115,10 +115,22 @@ export function handleLabelRegistered(event: LabelRegistered): void {
   history.isV1Migration = isV1Migration;
   history.save();
 
-  // The other bounded loop (docs/plan.md Phase 4): materialise a path for
-  // each namespace this registry currently, actively serves. Registry row
-  // is guaranteed to exist by bootstrapRegistry above.
+  // This reload looks redundant with bootstrapRegistry's own internal
+  // getOrCreateRegistry call above (fix-plan audit finding 9 originally
+  // flagged it as exactly that) — it is NOT. For a ROOT registry,
+  // bootstrapRegistry also calls getOrCreateRootNamespace, which does its
+  // OWN independent ENSv2Registry.load(...)/namespaceCount+=1/.save() on
+  // the same id (ensv2Discovery.ts). graph-ts entities are snapshots, not
+  // live references, so that mutation is invisible to any registry object
+  // obtained before it ran — only a fresh load after bootstrapRegistry
+  // returns sees the incremented namespaceCount materializePathsForSlot's
+  // loop below depends on. Passing bootstrapRegistry's own returned
+  // registry object here instead (removing this "redundant" reload) was
+  // tried and reverted after it silently broke path materialisation for
+  // every name under root — see docs/phases/fix-phase-2-*.md.
   let registry = ENSv2Registry.load(registryId)!;
+  // The other bounded loop (docs/plan.md Phase 4): materialise a path for
+  // each namespace this registry currently, actively serves.
   materializePathsForSlot(registry, slot, event, isV1Migration);
 }
 

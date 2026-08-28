@@ -226,7 +226,9 @@ export function handleSubregistryUpdated(event: SubregistryUpdated): void {
 
   let previousChildAddress = parentSlot.subregistry;
 
-  parentSlot.subregistryAddress = event.params.subregistry;
+  parentSlot.subregistryAddress = isZeroAddress(event.params.subregistry)
+    ? null
+    : event.params.subregistry;
   parentSlot.subregistry = isZeroAddress(event.params.subregistry)
     ? null
     : event.params.subregistry.toHexString();
