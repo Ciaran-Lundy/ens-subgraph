@@ -51,20 +51,25 @@ const OPERATOR = "0x3333333333333333333333333333333333333333";
 const NEW_OWNER = "0x4444444444444444444444444444444444444444";
 const CONTROLLER = "0x5555555555555555555555555555555555555555";
 
+// assert.fieldEquals compares an entity's id as its lowercase-hex string
+// form regardless of the underlying GraphQL type (confirmed against this
+// schema's existing Bytes! fields, fix plan Phase 5). Production code now
+// builds these ids as fixed-width Bytes concatenation with no delimiter
+// (contract/owner/operator/controller are all 20-byte addresses) — the hex
+// form of that concatenation is just each address's own hex digits run
+// together with a single leading "0x", so stripping "0x" from every
+// component but the first and concatenating reproduces it exactly.
 function operatorApprovalId(contract: string, owner: string, operator: string): string {
-  return Address.fromString(contract)
-    .toHexString()
-    .concat("-")
-    .concat(Address.fromString(owner).toHexString())
-    .concat("-")
-    .concat(Address.fromString(operator).toHexString());
+  let c = Address.fromString(contract).toHexString();
+  let o = Address.fromString(owner).toHexString().slice(2);
+  let op = Address.fromString(operator).toHexString().slice(2);
+  return c.concat(o).concat(op);
 }
 
 function controllerId(contract: string, controller: string): string {
-  return Address.fromString(contract)
-    .toHexString()
-    .concat("-")
-    .concat(Address.fromString(controller).toHexString());
+  let c = Address.fromString(contract).toHexString();
+  let ctrl = Address.fromString(controller).toHexString().slice(2);
+  return c.concat(ctrl);
 }
 
 function approvalParams(

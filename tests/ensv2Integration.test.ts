@@ -23,7 +23,7 @@ import {
   handleTokenResource,
 } from "../src/ensv2Registry";
 import { handleNameRegistered } from "../src/ensv2Registrar";
-import { handleAliasChanged } from "../src/ensv2Resolver";
+import { handleAliasChanged, namehashFromDnsEncoded } from "../src/ensv2Resolver";
 import { nameSlotId, pathNamehash, resourceId, toSlotId } from "../src/ensv2Utils";
 import {
   LabelRegistered,
@@ -305,6 +305,14 @@ afterEach(() => {
   clearStore();
 });
 
+// assert.fieldEquals compares an entity's id as its lowercase-hex string
+// form regardless of the underlying GraphQL type (fix plan Phase 5).
+// Production code now builds composite ids as fixed-width Bytes
+// concatenation with no delimiter — this mirrors that exact encoding.
+function bigIntHex32(i: BigInt): string {
+  return i.toHex().slice(2).padStart(64, "0");
+}
+
 test("full chain across registry, paths, domain, registrar, resources, roles, and resolver mapping files stays consistent in one store", () => {
   dataSourceMock.setNetwork("sepolia");
 
@@ -317,9 +325,9 @@ test("full chain across registry, paths, domain, registrar, resources, roles, an
   );
 
   let slotId = nameSlotId(
-    Address.fromString(ETH_REGISTRY).toHexString(),
+    Address.fromString(ETH_REGISTRY),
     toSlotId(tokenId)
-  );
+  ).toHexString();
   let pathId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
   let registrationId = labelHash.toHexString();
 
@@ -327,7 +335,7 @@ test("full chain across registry, paths, domain, registrar, resources, roles, an
 
   let resource = BigInt.fromI32(5);
   handleTokenResource(createTokenResourceEvent(ETH_REGISTRY, tokenId, resource));
-  let resourceEntityId = resourceId(Address.fromString(ETH_REGISTRY).toHexString(), resource);
+  let resourceEntityId = resourceId(Address.fromString(ETH_REGISTRY), resource).toHexString();
 
   let roleAccount = "0x22222222222222222222222222222222222222bb";
   handleEACRolesChanged(
@@ -341,10 +349,8 @@ test("full chain across registry, paths, domain, registrar, resources, roles, an
   );
   let assignmentId = Address.fromString(ETH_REGISTRY)
     .toHexString()
-    .concat("-")
-    .concat(resource.toString())
-    .concat("-")
-    .concat(Address.fromString(roleAccount).toHexString());
+    .concat(bigIntHex32(resource))
+    .concat(Address.fromString(roleAccount).toHexString().slice(2));
 
   let resolverAddress = "0x33333333333333333333333333333333333333cc";
   let fromName = encodeLabel("chaintest");
@@ -352,8 +358,7 @@ test("full chain across registry, paths, domain, registrar, resources, roles, an
   handleAliasChanged(createAliasChangedEvent(resolverAddress, fromName, toName));
   let aliasId = Address.fromString(resolverAddress)
     .toHexString()
-    .concat("-")
-    .concat(fromName.toHexString());
+    .concat(namehashFromDnsEncoded(fromName).toHexString().slice(2));
 
   // Each assertion below reads state written by a different mapping file
   // (ensv2Registry/ensv2Paths/ensv2Domain/ensv2Registrar/ensv2Roles/
@@ -418,9 +423,9 @@ test("late-link + Domain projection combined: pre-existing child registration st
     )
   );
   let preexistingSlotId = nameSlotId(
-    Address.fromString(LATE_CHILD_REGISTRY).toHexString(),
+    Address.fromString(LATE_CHILD_REGISTRY),
     toSlotId(slotToken(1))
-  );
+  ).toHexString();
   assert.fieldEquals("ENSv2NameSlot", preexistingSlotId, "pathCount", "0");
 
   // Root's "latebase" slot, then the late-link.
@@ -466,27 +471,28 @@ test("Phase 6 migration correction survives unrelated cross-file activity in the
   let domainId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
   let registrationId = labelHash.toHexString();
 
-  let domain = new Domain(domainId);
-  domain.owner = GRAVEYARD;
-  domain.registrant = GRAVEYARD;
-  domain.wrappedOwner = GRAVEYARD;
+  let graveyard = Bytes.fromHexString(GRAVEYARD);
+  let domain = new Domain(Bytes.fromHexString(domainId));
+  domain.owner = graveyard;
+  domain.registrant = graveyard;
+  domain.wrappedOwner = graveyard;
   domain.isMigrated = true;
   domain.subdomainCount = 0;
   domain.createdAt = BigInt.fromI32(0);
   domain.save();
 
-  let registration = new Registration(registrationId);
-  registration.domain = domainId;
+  let registration = new Registration(Bytes.fromHexString(registrationId));
+  registration.domain = Bytes.fromHexString(domainId);
   registration.registrationDate = BigInt.fromI32(0);
   registration.expiryDate = BigInt.fromI32(1000000000);
-  registration.registrant = GRAVEYARD;
+  registration.registrant = graveyard;
   registration.save();
 
-  let wrappedDomain = new WrappedDomain(domainId);
-  wrappedDomain.domain = domainId;
+  let wrappedDomain = new WrappedDomain(Bytes.fromHexString(domainId));
+  wrappedDomain.domain = Bytes.fromHexString(domainId);
   wrappedDomain.expiryDate = BigInt.fromI32(1000000000);
   wrappedDomain.fuses = 65536; // PARENT_CANNOT_CONTROL — "locked"
-  wrappedDomain.owner = GRAVEYARD;
+  wrappedDomain.owner = graveyard;
   wrappedDomain.save();
 
   handleLabelRegistered(

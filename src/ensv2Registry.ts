@@ -14,7 +14,13 @@ import { Address, BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 
 import { getOrCreateRegistry, getOrCreateRootNamespace } from "./ensv2Discovery";
 import { nameSlotId, resourceId, toSlotId, tokenEntityId } from "./ensv2Utils";
-import { checkValidLabel, createEventID, createOrLoadAccount } from "./utils";
+import {
+  checkValidLabel,
+  concat,
+  createEventID,
+  createOrLoadAccount,
+  i32ToBytes,
+} from "./utils";
 import {
   getEthRegistryAddress,
   getV2GracePeriod,
@@ -65,7 +71,7 @@ import {
 // arrives (RootRegistry has no parent to emit a SubregistryUpdated that
 // would otherwise create it).
 function bootstrapRegistry(address: Address, block: ethereum.Block): void {
-  let registry = getOrCreateRegistry(address.toHexString(), address, block);
+  let registry = getOrCreateRegistry(address, address, block);
   let kind = registry.kind;
   if (kind == "ROOT") {
     getOrCreateRootNamespace(registry.id, block);
@@ -75,7 +81,7 @@ function bootstrapRegistry(address: Address, block: ethereum.Block): void {
 export function handleLabelRegistered(event: LabelRegistered): void {
   bootstrapRegistry(event.address, event.block);
 
-  let registryId = event.address.toHexString();
+  let registryId = event.address;
   let slotId = toSlotId(event.params.tokenId);
   let id = nameSlotId(registryId, slotId);
 
@@ -94,7 +100,7 @@ export function handleLabelRegistered(event: LabelRegistered): void {
   if (checkValidLabel(event.params.label)) {
     slot.label = event.params.label;
   }
-  let account = createOrLoadAccount(event.params.owner.toHexString());
+  let account = createOrLoadAccount(event.params.owner);
   let isV1Migration = isMigrationController(event.params.sender);
   slot.owner = account.id;
   slot.registrant = account.id;
@@ -139,7 +145,7 @@ export function handleLabelRegistered(event: LabelRegistered): void {
 export function handleLabelReserved(event: LabelReserved): void {
   bootstrapRegistry(event.address, event.block);
 
-  let registryId = event.address.toHexString();
+  let registryId = event.address;
   let slotId = toSlotId(event.params.tokenId);
   let id = nameSlotId(registryId, slotId);
 
@@ -170,7 +176,7 @@ export function handleLabelReserved(event: LabelReserved): void {
 export function handleLabelUnregistered(event: LabelUnregistered): void {
   bootstrapRegistry(event.address, event.block);
 
-  let registryId = event.address.toHexString();
+  let registryId = event.address;
   let slotId = toSlotId(event.params.tokenId);
   let id = nameSlotId(registryId, slotId);
 
@@ -178,7 +184,7 @@ export function handleLabelUnregistered(event: LabelUnregistered): void {
   if (slot == null) {
     log.warning(
       "LabelUnregistered for unknown slot {} on registry {}",
-      [slotId.toString(), registryId]
+      [slotId.toString(), registryId.toHexString()]
     );
     return;
   }
@@ -202,7 +208,7 @@ export function handleLabelUnregistered(event: LabelUnregistered): void {
 export function handleExpiryUpdated(event: ExpiryUpdated): void {
   bootstrapRegistry(event.address, event.block);
 
-  let registryId = event.address.toHexString();
+  let registryId = event.address;
   let slotId = toSlotId(event.params.tokenId);
   let id = nameSlotId(registryId, slotId);
 
@@ -210,7 +216,7 @@ export function handleExpiryUpdated(event: ExpiryUpdated): void {
   if (slot == null) {
     log.warning(
       "ExpiryUpdated for unknown slot {} on registry {}",
-      [slotId.toString(), registryId]
+      [slotId.toString(), registryId.toHexString()]
     );
     return;
   }
@@ -227,16 +233,16 @@ export function handleExpiryUpdated(event: ExpiryUpdated): void {
   // Registration/Domain for those from that event. Syncing the v2 side too
   // for a RESERVED slot would race with, and could overwrite, the correct
   // v1-derived values — so do nothing there (docs/plan.md Phase 6).
-  let isEth = slot.registry == getEthRegistryAddress().toHexString();
+  let isEth = slot.registry.equals(getEthRegistryAddress());
   if (isEth && slot.status == "REGISTERED") {
-    let registration = Registration.load(slot.labelhash.toHexString());
+    let registration = Registration.load(slot.labelhash);
     if (registration != null) {
       registration.expiryDate = event.params.newExpiry;
       registration.save();
     }
     let domainId = getEthDomainId(slot);
-    if (domainId !== null) {
-      let domain = Domain.load(domainId as string);
+    if (domainId) {
+      let domain = Domain.load(domainId!);
       if (domain != null) {
         domain.expiryDate = event.params.newExpiry.plus(getV2GracePeriod());
         domain.save();
@@ -266,13 +272,13 @@ export function handleResolverUpdated(event: ResolverUpdated): void {
 export function handleTokenResource(event: TokenResource): void {
   bootstrapRegistry(event.address, event.block);
 
-  let registryId = event.address.toHexString();
+  let registryId = event.address;
   let slotId = toSlotId(event.params.tokenId);
   let slot = ENSv2NameSlot.load(nameSlotId(registryId, slotId));
   if (slot == null) {
     log.warning(
       "TokenResource for unknown slot {} on registry {}",
-      [slotId.toString(), registryId]
+      [slotId.toString(), registryId.toHexString()]
     );
     return;
   }
@@ -310,13 +316,14 @@ export function handleTokenResource(event: TokenResource): void {
   resourceEntity.currentToken = token.id;
   resourceEntity.save();
 
+  // Nullable-Bytes comparison, not `!==`/`!=` (docs/plan.md's AssemblyScript
+  // compiler gotcha, fix plan Phase 5): guard with a truthy check, then use
+  // .equals() on the narrowed value.
   let previousResourceId = slot.currentResource;
-  if (previousResourceId !== null) {
-    let previousResourceIdStr: string = previousResourceId as string;
-    let newResourceIdStr: string = resourceEntity.id;
-    let isDifferentResource: bool = previousResourceIdStr != newResourceIdStr;
+  if (previousResourceId) {
+    let isDifferentResource = !previousResourceId!.equals(resourceEntity.id);
     if (isDifferentResource) {
-      let oldResource = ENSv2Resource.load(previousResourceIdStr);
+      let oldResource = ENSv2Resource.load(previousResourceId!);
       if (oldResource != null) {
         oldResource.active = false;
         oldResource.endedAt = event.block.timestamp;
@@ -335,14 +342,14 @@ export function handleTokenResource(event: TokenResource): void {
 export function handleTokenRegenerated(event: TokenRegenerated): void {
   bootstrapRegistry(event.address, event.block);
 
-  let registryId = event.address.toHexString();
+  let registryId = event.address;
   let oldToken = ENSv2Token.load(
     tokenEntityId(registryId, event.params.oldTokenId)
   );
   if (oldToken == null) {
     log.warning("TokenRegenerated for unknown old token {} on registry {}", [
       event.params.oldTokenId.toString(),
-      registryId,
+      registryId.toHexString(),
     ]);
     return;
   }
@@ -369,18 +376,16 @@ export function handleTokenRegenerated(event: TokenRegenerated): void {
   // repoint the slot/resource's currentToken) when the old token actually
   // had a resolved slot (docs/plan.md Phase 3 Decision 3's constraint).
   let oldTokenSlotId = oldToken.slot;
-  if (oldTokenSlotId !== null) {
-    let oldTokenSlotIdStr: string = oldTokenSlotId as string;
-    let slot = ENSv2NameSlot.load(oldTokenSlotIdStr);
+  if (oldTokenSlotId) {
+    let slot = ENSv2NameSlot.load(oldTokenSlotId!);
     if (slot != null) {
       slot.currentToken = newToken.id;
       slot.updatedAtBlock = event.block.number;
       slot.save();
     }
     let oldTokenResourceEntityId = oldToken.resourceEntity;
-    if (oldTokenResourceEntityId !== null) {
-      let oldTokenResourceEntityIdStr: string = oldTokenResourceEntityId as string;
-      let resourceEntity = ENSv2Resource.load(oldTokenResourceEntityIdStr);
+    if (oldTokenResourceEntityId) {
+      let resourceEntity = ENSv2Resource.load(oldTokenResourceEntityId!);
       if (resourceEntity != null) {
         resourceEntity.currentToken = newToken.id;
         resourceEntity.updatedAtBlock = event.block.number;
@@ -389,7 +394,7 @@ export function handleTokenRegenerated(event: TokenRegenerated): void {
     }
 
     let history = new ENSv2TokenRegenerated(createEventID(event));
-    history.slot = oldTokenSlotIdStr;
+    history.slot = oldTokenSlotId!;
     history.blockNumber = event.block.number;
     history.transactionID = event.transaction.hash;
     history.logIndex = event.logIndex;
@@ -400,14 +405,14 @@ export function handleTokenRegenerated(event: TokenRegenerated): void {
 }
 
 function makeTokenTransfer(
-  registryId: string,
+  registryId: Bytes,
   tokenId: BigInt,
   from: Address,
   to: Address,
   block: ethereum.Block,
   transactionID: Bytes,
   logIndex: BigInt,
-  eventId: string
+  eventId: Bytes
 ): void {
   let token = ENSv2Token.load(tokenEntityId(registryId, tokenId));
   if (token == null) {
@@ -421,15 +426,14 @@ function makeTokenTransfer(
     token.active = true;
     token.createdAtBlock = block.number;
   }
-  let toAccount = createOrLoadAccount(to.toHexString());
+  let toAccount = createOrLoadAccount(to);
   token.owner = toAccount.id;
   token.updatedAtBlock = block.number;
   token.save();
 
   let tokenSlotId = token.slot;
-  if (tokenSlotId !== null) {
-    let tokenSlotIdStr: string = tokenSlotId as string;
-    let slot = ENSv2NameSlot.load(tokenSlotIdStr);
+  if (tokenSlotId) {
+    let slot = ENSv2NameSlot.load(tokenSlotId!);
     if (slot != null) {
       slot.owner = toAccount.id;
       slot.updatedAtBlock = block.number;
@@ -437,25 +441,21 @@ function makeTokenTransfer(
 
       // Subsequent transfers on a migrated slot keep writing to the same
       // legacy field the migration event corrected (docs/plan.md Phase 6).
-      let isEth = slot.registry == getEthRegistryAddress().toHexString();
+      let isEth = slot.registry.equals(getEthRegistryAddress());
       if (slot.migratedFromV1 && isEth) {
         let domainId = getEthDomainId(slot);
-        if (domainId !== null) {
-          correctMigratedLegacyOwner(
-            domainId as string,
-            slot.labelhash.toHexString(),
-            toAccount.id
-          );
+        if (domainId) {
+          correctMigratedLegacyOwner(domainId!, slot.labelhash, toAccount.id);
         }
       }
     }
 
     let history = new ENSv2TokenTransferred(eventId);
-    history.slot = tokenSlotIdStr;
+    history.slot = tokenSlotId!;
     history.blockNumber = block.number;
     history.transactionID = transactionID;
     history.logIndex = logIndex;
-    history.from = createOrLoadAccount(from.toHexString()).id;
+    history.from = createOrLoadAccount(from).id;
     history.to = toAccount.id;
     history.tokenId = tokenId;
     history.save();
@@ -469,21 +469,21 @@ export function handleTransferSingle(event: TransferSingle): void {
   bootstrapRegistry(event.address, event.block);
 
   makeTokenTransfer(
-    event.address.toHexString(),
+    event.address,
     event.params.id,
     event.params.from,
     event.params.to,
     event.block,
     event.transaction.hash,
     event.logIndex,
-    createEventID(event).concat("-0")
+    Bytes.fromByteArray(concat(createEventID(event), i32ToBytes(0)))
   );
 }
 
 export function handleTransferBatch(event: TransferBatch): void {
   bootstrapRegistry(event.address, event.block);
 
-  let registryId = event.address.toHexString();
+  let registryId = event.address;
   let ids = event.params.ids;
   for (let i = 0; i < ids.length; i++) {
     makeTokenTransfer(
@@ -494,7 +494,7 @@ export function handleTransferBatch(event: TransferBatch): void {
       event.block,
       event.transaction.hash,
       event.logIndex,
-      createEventID(event).concat("-").concat(i.toString())
+      Bytes.fromByteArray(concat(createEventID(event), i32ToBytes(i)))
     );
   }
 }

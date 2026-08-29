@@ -406,6 +406,20 @@ afterEach(() => {
   clearStore();
 });
 
+// assert.fieldEquals compares an entity's id as its lowercase-hex string
+// form regardless of the underlying GraphQL type (fix plan Phase 5).
+// Production code now builds these ids as fixed-width Bytes concatenation
+// with no delimiter: addresses are 20 bytes, a BigInt component is a
+// 32-byte big-endian value (src/utils.ts::uint256ToByteArray), a small loop
+// index is a 4-byte big-endian value (src/utils.ts::i32ToBytes) — these
+// mirror that exact encoding to reproduce the same hex strings.
+function bigIntHex32(i: BigInt): string {
+  return i.toHex().slice(2).padStart(64, "0");
+}
+function i32Hex4(i: i32): string {
+  return bigIntHex32(BigInt.fromI32(i)).slice(56);
+}
+
 test("RootRegistry event bootstraps ENSv2Registry(kind=ROOT) and the root ENSv2Namespace", () => {
   dataSourceMock.setNetwork("sepolia");
 
@@ -420,7 +434,7 @@ test("RootRegistry event bootstraps ENSv2Registry(kind=ROOT) and the root ENSv2N
   assert.fieldEquals("ENSv2Registry", registryId, "kind", "ROOT");
   assert.fieldEquals("ENSv2Registry", registryId, "namespaceCount", "1");
 
-  let namespaceId = registryId.concat("-").concat(ROOT_NAMEHASH);
+  let namespaceId = registryId.concat(ROOT_NAMEHASH.slice(2));
   // baseName is deliberately never assigned for root (see
   // src/ensv2Discovery.ts::getOrCreateRootNamespace) — the generated
   // nullable-String setter treats "" as falsy and unsets the field anyway,
@@ -449,7 +463,7 @@ test("ETHRegistry event bootstraps ENSv2Registry(kind=ETH) without a root namesp
   assert.fieldEquals("ENSv2Registry", registryId, "kind", "ETH");
   assert.fieldEquals("ENSv2Registry", registryId, "namespaceCount", "0");
 
-  let namespaceId = registryId.concat("-").concat(ROOT_NAMEHASH);
+  let namespaceId = registryId.concat(ROOT_NAMEHASH.slice(2));
   assert.notInStore("ENSv2Namespace", namespaceId);
 });
 
@@ -479,7 +493,7 @@ test("fresh registration populates ENSv2NameSlot and creates ENSv2LabelRegistere
   );
   handleLabelRegistered(event);
 
-  let slotId = registryId.concat("-0");
+  let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
   assert.fieldEquals("ENSv2NameSlot", slotId, "status", "REGISTERED");
   assert.fieldEquals("ENSv2NameSlot", slotId, "label", "alice");
   assert.fieldEquals("ENSv2NameSlot", slotId, "expiryDate", "2000000000");
@@ -488,7 +502,7 @@ test("fresh registration populates ENSv2NameSlot and creates ENSv2LabelRegistere
   assert.fieldEquals("ENSv2NameSlot", slotId, "registrant", ownerId);
   assert.fieldEquals("ENSv2NameSlot", slotId, "migratedFromV1", "false");
 
-  let historyId = event.block.number.toString().concat("-").concat(event.logIndex.toString());
+  let historyId = "0x".concat(bigIntHex32(event.block.number)).concat(bigIntHex32(event.logIndex));
   assert.fieldEquals("ENSv2LabelRegistered", historyId, "slot", slotId);
   assert.fieldEquals("ENSv2LabelRegistered", historyId, "isReRegistration", "false");
   assert.fieldEquals(
@@ -510,11 +524,11 @@ test("reservation sets status RESERVED and creates no history entity", () => {
   );
   handleLabelReserved(event);
 
-  let slotId = registryId.concat("-0");
+  let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
   assert.fieldEquals("ENSv2NameSlot", slotId, "status", "RESERVED");
   assert.fieldEquals("ENSv2NameSlot", slotId, "expiryDate", "2000000000");
 
-  let historyId = event.block.number.toString().concat("-").concat(event.logIndex.toString());
+  let historyId = "0x".concat(bigIntHex32(event.block.number)).concat(bigIntHex32(event.logIndex));
   assert.notInStore("ENSv2LabelRegistered", historyId);
 });
 
@@ -536,7 +550,7 @@ test("unregistration flips status to AVAILABLE, keeps stale fields, records hist
   );
   handleLabelUnregistered(unregisterEvent);
 
-  let slotId = registryId.concat("-0");
+  let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
   assert.fieldEquals("ENSv2NameSlot", slotId, "status", "AVAILABLE");
   // stale fields from the registration are left as last-known values, not
   // nulled (docs/plan.md Phase 2 Decision 4)
@@ -548,10 +562,7 @@ test("unregistration flips status to AVAILABLE, keeps stale fields, records hist
     Address.fromString(OWNER).toHexString()
   );
 
-  let historyId = unregisterEvent.block.number
-    .toString()
-    .concat("-")
-    .concat(unregisterEvent.logIndex.toString());
+  let historyId = "0x".concat(bigIntHex32(unregisterEvent.block.number)).concat(bigIntHex32(unregisterEvent.logIndex));
   assert.fieldEquals("ENSv2LabelUnregistered", historyId, "slot", slotId);
 });
 
@@ -571,13 +582,10 @@ test("renewal (ExpiryUpdated) updates expiryDate and creates ENSv2LabelRenewed",
   let renewEvent = createExpiryUpdatedEvent(REGISTRY_RENEWAL, tokenId, newExpiry);
   handleExpiryUpdated(renewEvent);
 
-  let slotId = registryId.concat("-0");
+  let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
   assert.fieldEquals("ENSv2NameSlot", slotId, "expiryDate", "2100000000");
 
-  let historyId = renewEvent.block.number
-    .toString()
-    .concat("-")
-    .concat(renewEvent.logIndex.toString());
+  let historyId = "0x".concat(bigIntHex32(renewEvent.block.number)).concat(bigIntHex32(renewEvent.logIndex));
   assert.fieldEquals("ENSv2LabelRenewed", historyId, "slot", slotId);
   assert.fieldEquals("ENSv2LabelRenewed", historyId, "newExpiryDate", "2100000000");
 });
@@ -604,14 +612,11 @@ test("re-registration after unregistration reuses the same slot and sets isReReg
   // Same ID is reused by construction (load-or-create on a deterministic
   // id) — proving the second event's fields landed on that same row is
   // enough to show reuse, no separate collision-prone count check needed.
-  let slotId = registryId.concat("-0");
+  let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
   assert.fieldEquals("ENSv2NameSlot", slotId, "status", "REGISTERED");
   assert.fieldEquals("ENSv2NameSlot", slotId, "label", "dave-again");
 
-  let historyId = secondRegisterEvent.block.number
-    .toString()
-    .concat("-")
-    .concat(secondRegisterEvent.logIndex.toString());
+  let historyId = "0x".concat(bigIntHex32(secondRegisterEvent.block.number)).concat(bigIntHex32(secondRegisterEvent.logIndex));
   assert.fieldEquals("ENSv2LabelRegistered", historyId, "isReRegistration", "true");
 });
 
@@ -629,9 +634,9 @@ test("TokenResource after registration links slot/resource/token", () => {
     createTokenResourceEvent(REGISTRY_TOKEN_RESOURCE, tokenId, resource)
   );
 
-  let slotId = registryId.concat("-0");
-  let resourceEntityId = registryId.concat("-").concat(resource.toString());
-  let tokenEntityId = registryId.concat("-").concat(tokenId.toString());
+  let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
+  let resourceEntityId = registryId.concat(bigIntHex32(resource));
+  let tokenEntityId = registryId.concat(bigIntHex32(tokenId));
 
   assert.fieldEquals("ENSv2NameSlot", slotId, "currentResource", resourceEntityId);
   assert.fieldEquals("ENSv2NameSlot", slotId, "currentToken", tokenEntityId);
@@ -646,7 +651,7 @@ test("mint before TokenResource reconciles: token row exists without history, th
 
   let registryId = Address.fromString(REGISTRY_MINT_BEFORE_RESOURCE).toHexString();
   let tokenId = BigInt.fromI32(1);
-  let tokenEntityId = registryId.concat("-").concat(tokenId.toString());
+  let tokenEntityId = registryId.concat(bigIntHex32(tokenId));
 
   // No LabelRegistered/TokenResource yet — a fresh mint's TransferSingle
   // arrives first.
@@ -664,11 +669,7 @@ test("mint before TokenResource reconciles: token row exists without history, th
     "owner",
     Address.fromString(OWNER).toHexString()
   );
-  let mintHistoryId = mintEvent.block.number
-    .toString()
-    .concat("-")
-    .concat(mintEvent.logIndex.toString())
-    .concat("-0");
+  let mintHistoryId = "0x".concat(bigIntHex32(mintEvent.block.number)).concat(bigIntHex32(mintEvent.logIndex)).concat(i32Hex4(0));
   assert.notInStore("ENSv2TokenTransferred", mintHistoryId);
 
   // Registration + TokenResource now resolve the slot.
@@ -683,7 +684,7 @@ test("mint before TokenResource reconciles: token row exists without history, th
     )
   );
 
-  let slotId = registryId.concat("-0");
+  let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
   assert.fieldEquals("ENSv2Token", tokenEntityId, "slot", slotId);
 
   // A subsequent transfer now gets a proper history row.
@@ -695,11 +696,7 @@ test("mint before TokenResource reconciles: token row exists without history, th
   );
   handleTransferSingle(secondTransfer);
 
-  let secondHistoryId = secondTransfer.block.number
-    .toString()
-    .concat("-")
-    .concat(secondTransfer.logIndex.toString())
-    .concat("-0");
+  let secondHistoryId = "0x".concat(bigIntHex32(secondTransfer.block.number)).concat(bigIntHex32(secondTransfer.logIndex)).concat(i32Hex4(0));
   assert.fieldEquals("ENSv2TokenTransferred", secondHistoryId, "slot", slotId);
   assert.fieldEquals(
     "ENSv2NameSlot",
@@ -734,10 +731,10 @@ test("regeneration clones slot/resource onto the new token and deactivates the o
   );
   handleTokenRegenerated(regenEvent);
 
-  let slotId = registryId.concat("-0");
-  let oldTokenEntityId = registryId.concat("-").concat(oldTokenId.toString());
-  let newTokenEntityId = registryId.concat("-").concat(newTokenId.toString());
-  let resourceEntityId = registryId.concat("-888");
+  let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
+  let oldTokenEntityId = registryId.concat(bigIntHex32(oldTokenId));
+  let newTokenEntityId = registryId.concat(bigIntHex32(newTokenId));
+  let resourceEntityId = registryId.concat(bigIntHex32(BigInt.fromI32(888)));
 
   // Cloned onto the new token with zero TokenResource calls for it.
   assert.fieldEquals("ENSv2Token", newTokenEntityId, "slot", slotId);
@@ -747,10 +744,7 @@ test("regeneration clones slot/resource onto the new token and deactivates the o
   assert.fieldEquals("ENSv2NameSlot", slotId, "currentToken", newTokenEntityId);
   assert.fieldEquals("ENSv2Resource", resourceEntityId, "currentToken", newTokenEntityId);
 
-  let historyId = regenEvent.block.number
-    .toString()
-    .concat("-")
-    .concat(regenEvent.logIndex.toString());
+  let historyId = "0x".concat(bigIntHex32(regenEvent.block.number)).concat(bigIntHex32(regenEvent.logIndex));
   assert.fieldEquals("ENSv2TokenRegenerated", historyId, "oldTokenId", oldTokenId.toString());
   assert.fieldEquals("ENSv2TokenRegenerated", historyId, "newTokenId", newTokenId.toString());
 });
@@ -786,8 +780,8 @@ test("TransferBatch updates all token rows and writes one history row per id", (
   );
   handleTransferBatch(batchEvent);
 
-  let tokenEntityIdA = registryId.concat("-").concat(tokenIdA.toString());
-  let tokenEntityIdB = registryId.concat("-").concat(tokenIdB.toString());
+  let tokenEntityIdA = registryId.concat(bigIntHex32(tokenIdA));
+  let tokenEntityIdB = registryId.concat(bigIntHex32(tokenIdB));
   assert.fieldEquals(
     "ENSv2Token",
     tokenEntityIdA,
@@ -801,12 +795,9 @@ test("TransferBatch updates all token rows and writes one history row per id", (
     Address.fromString(OWNER_2).toHexString()
   );
 
-  let baseHistoryId = batchEvent.block.number
-    .toString()
-    .concat("-")
-    .concat(batchEvent.logIndex.toString());
-  assert.fieldEquals("ENSv2TokenTransferred", baseHistoryId.concat("-0"), "tokenId", tokenIdA.toString());
-  assert.fieldEquals("ENSv2TokenTransferred", baseHistoryId.concat("-1"), "tokenId", tokenIdB.toString());
+  let baseHistoryId = "0x".concat(bigIntHex32(batchEvent.block.number)).concat(bigIntHex32(batchEvent.logIndex));
+  assert.fieldEquals("ENSv2TokenTransferred", baseHistoryId.concat(i32Hex4(0)), "tokenId", tokenIdA.toString());
+  assert.fieldEquals("ENSv2TokenTransferred", baseHistoryId.concat(i32Hex4(1)), "tokenId", tokenIdB.toString());
 });
 
 test("cross-check with Phase 2: unregister -> re-register produces a new resource incarnation, old one kept but inactive", () => {
@@ -834,14 +825,14 @@ test("cross-check with Phase 2: unregister -> re-register produces a new resourc
     createTokenResourceEvent(REGISTRY_RESOURCE_CROSS_CHECK, tokenId, resourceB)
   );
 
-  let slotId = registryId.concat("-0");
-  let resourceEntityIdA = registryId.concat("-").concat(resourceA.toString());
-  let resourceEntityIdB = registryId.concat("-").concat(resourceB.toString());
+  let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
+  let resourceEntityIdA = registryId.concat(bigIntHex32(resourceA));
+  let resourceEntityIdB = registryId.concat(bigIntHex32(resourceB));
 
   assert.fieldEquals("ENSv2NameSlot", slotId, "currentResource", resourceEntityIdB);
   // Old resource still exists (never deleted) but is superseded.
   assert.fieldEquals("ENSv2Resource", resourceEntityIdA, "active", "false");
-  let oldResource = ENSv2Resource.load(resourceEntityIdA);
+  let oldResource = ENSv2Resource.load(Bytes.fromHexString(resourceEntityIdA));
   let hasEndedAt = false;
   if (oldResource != null) {
     if (oldResource.endedAt) {

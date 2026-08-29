@@ -118,18 +118,27 @@ test("sets 0x0 resolver to null", () => {
   );
   handleNewResolver(newNewResolverEvent);
 
-  let fetchedDomain = Domain.load(namehash)!;
+  let fetchedDomain = Domain.load(Bytes.fromHexString(namehash))!;
 
-  assert.assertNotNull(fetchedDomain.resolver);
+  // assert.assertNotNull<T> does `value != null` internally, which crashes
+  // the AS compiler for a nullable Bytes generic (docs/plan.md's compiler
+  // gotcha) — use a truthy check assigned to a local boolean instead.
+  let hasResolver = false;
+  if (fetchedDomain.resolver) {
+    hasResolver = true;
+  }
+  assert.assertTrue(hasResolver);
 
   // The NewResolver history entity's own `resolver` relation for this
-  // non-zero case should point at a real Resolver row.
+  // non-zero case should point at a real Resolver row. Production ids are
+  // now a fixed-width Bytes concatenation with no delimiter (fix plan Phase
+  // 5 Decision 1): resolver address (20 bytes) + node (32 bytes).
   let setEventId = createEventID(newNewResolverEvent);
   assert.fieldEquals(
     "NewResolver",
-    setEventId,
+    setEventId.toHexString(),
     "resolver",
-    `${DEFAULT_RESOLVER.toLowerCase()}-${namehash}`
+    `${DEFAULT_RESOLVER.toLowerCase()}${namehash.slice(2)}`
   );
 
   // newMockEvent() reuses the same block/logIndex every call — bump
@@ -141,9 +150,9 @@ test("sets 0x0 resolver to null", () => {
   );
   handleNewResolver(emptyResolverEvent);
 
-  fetchedDomain = Domain.load(namehash)!;
+  fetchedDomain = Domain.load(Bytes.fromHexString(namehash))!;
 
-  assert.assertNull(fetchedDomain.resolver);
+  assert.assertTrue(!fetchedDomain.resolver);
 
   // Regression test for the reconciliation-report Finding 1 bug: the
   // resolver-cleared-to-zero NewResolver row's own `resolver` relation
@@ -156,7 +165,6 @@ test("sets 0x0 resolver to null", () => {
   assert.assertNotNull(clearedHistoryRow);
   if (clearedHistoryRow != null) {
     let resolverRelationId = clearedHistoryRow.resolver;
-    let hasResolverRelation = resolverRelationId !== null;
-    assert.assertTrue(!hasResolverRelation);
+    assert.assertTrue(!resolverRelationId);
   }
 });

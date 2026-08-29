@@ -40,15 +40,24 @@ function slotToken(n: i32): BigInt {
   return TWO_POW_32.times(BigInt.fromI32(n));
 }
 
+// assert.fieldEquals compares an entity's id as its lowercase-hex string
+// form regardless of the underlying GraphQL type (fix plan Phase 5).
+// Production code now builds composite ids as fixed-width Bytes
+// concatenation with no delimiter (a BigInt component is a 32-byte
+// big-endian value, src/utils.ts::uint256ToByteArray) — this mirrors that
+// exact encoding to reproduce the same hex string.
+function bigIntHex32(i: BigInt): string {
+  return i.toHex().slice(2).padStart(64, "0");
+}
+
 function slotIdFor(registryAddress: string, n: i32): string {
   return Address.fromString(registryAddress)
     .toHexString()
-    .concat("-")
-    .concat(slotToken(n).toString());
+    .concat(bigIntHex32(slotToken(n)));
 }
 
 function slotExists(id: string): boolean {
-  let slot = ENSv2NameSlot.load(id);
+  let slot = ENSv2NameSlot.load(Bytes.fromHexString(id));
   let exists = slot != null;
   return exists;
 }
@@ -508,11 +517,10 @@ test("SubregistryUpdated(..., address(0)) clears the link and deactivates (not d
     Bytes.fromHexString(ROOT_NAMEHASH),
     Bytes.fromI32(60)
   ).toHexString();
-  let childRegistryId = Address.fromString(CLEAR_CHILD_REGISTRY).toHexString();
   let namespaceEntityId = namespaceId(
-    childRegistryId,
+    Address.fromString(CLEAR_CHILD_REGISTRY),
     Bytes.fromHexString(clearPathId)
-  );
+  ).toHexString();
   assert.fieldEquals("ENSv2Namespace", namespaceEntityId, "active", "true");
 
   let rootSlotId = slotIdFor(ROOT_REGISTRY, 1);

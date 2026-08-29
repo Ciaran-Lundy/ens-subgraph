@@ -6,7 +6,7 @@
 // than either event class; ensv2Registry.ts and ensv2Resolver.ts's
 // handleEACRolesChanged are both thin wrappers over this.
 import { Address, BigInt, Bytes, ethereum } from "@graphprotocol/graph-ts";
-import { createOrLoadAccount } from "./utils";
+import { concat, createOrLoadAccount, uint256ToByteArray } from "./utils";
 import { resourceId } from "./ensv2Utils";
 import { ENSv2Resource, ENSv2RoleAssignment, ENSv2RoleChange } from "./types/schema";
 
@@ -20,10 +20,15 @@ export function processEACRolesChanged(
   transactionID: Bytes,
   logIndex: BigInt
 ): void {
-  let contractId = contract.toHexString();
-  let accountEntity = createOrLoadAccount(account.toHexString());
+  let contractId: Bytes = contract;
+  let accountEntity = createOrLoadAccount(account);
 
-  let id = contractId.concat("-").concat(resource.toString()).concat("-").concat(accountEntity.id);
+  // Fixed-width concatenation, no delimiter needed (fix plan Phase 5
+  // Decision 1): contract/account are 20-byte addresses, resource is a
+  // 32-byte big-endian BigInt.
+  let id = Bytes.fromByteArray(
+    concat(concat(contractId, uint256ToByteArray(resource)), accountEntity.id)
+  );
   let assignment = ENSv2RoleAssignment.load(id);
   if (assignment == null) {
     assignment = new ENSv2RoleAssignment(id);
@@ -42,10 +47,13 @@ export function processEACRolesChanged(
   assignment.updatedAtBlock = block.number;
   assignment.save();
 
-  // Replicates utils.ts::createEventID's own body (block.number-logIndex) —
-  // that helper takes a full ethereum.Event, not available here since only
-  // its constituent fields are passed through from each wrapper.
-  let historyId = block.number.toString().concat("-").concat(logIndex.toString());
+  // Replicates utils.ts::createEventID's own body (block.number + logIndex,
+  // each a 32-byte big-endian value, concatenated) — that helper takes a
+  // full ethereum.Event, not available here since only its constituent
+  // fields are passed through from each wrapper.
+  let historyId = Bytes.fromByteArray(
+    concat(uint256ToByteArray(block.number), uint256ToByteArray(logIndex))
+  );
   let history = new ENSv2RoleChange(historyId);
   history.contract = contract;
   history.resource = resource;

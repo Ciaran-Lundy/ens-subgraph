@@ -23,7 +23,7 @@ import {
 import { processOwnershipTransferred } from "./accessControl";
 
 export function handleNameRegistered(event: NameRegistered): void {
-  let registryId = getEthRegistryAddress().toHexString();
+  let registryId = getEthRegistryAddress();
   let slotId = toSlotId(event.params.tokenId);
   let id = nameSlotId(registryId, slotId);
 
@@ -37,7 +37,7 @@ export function handleNameRegistered(event: NameRegistered): void {
   if (checkValidLabel(event.params.label)) {
     registration.label = event.params.label;
   }
-  registration.owner = createOrLoadAccount(event.params.owner.toHexString()).id;
+  registration.owner = createOrLoadAccount(event.params.owner).id;
   registration.duration = event.params.duration;
   registration.paymentToken = event.params.paymentToken;
   registration.referrer = event.params.referrer;
@@ -49,7 +49,7 @@ export function handleNameRegistered(event: NameRegistered): void {
 }
 
 export function handleNameRenewed(event: NameRenewed): void {
-  let registryId = getEthRegistryAddress().toHexString();
+  let registryId = getEthRegistryAddress();
   let slotId = toSlotId(event.params.tokenId);
   let id = nameSlotId(registryId, slotId);
 

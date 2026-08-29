@@ -31,9 +31,9 @@ function slotToken(n: i32): BigInt {
 
 function registrationIdFor(n: i32): string {
   return nameSlotId(
-    Address.fromString(ETH_REGISTRY).toHexString(),
+    Address.fromString(ETH_REGISTRY),
     toSlotId(slotToken(n))
-  );
+  ).toHexString();
 }
 
 const createLabelRegisteredEvent = (

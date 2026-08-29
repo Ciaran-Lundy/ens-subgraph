@@ -1,7 +1,6 @@
 // Import types and APIs from graph-ts
 import {
   BigInt,
-  ByteArray,
   Bytes,
   crypto,
   ens,
@@ -62,14 +61,15 @@ import {
 
 const GRACE_PERIOD_SECONDS = BigInt.fromI32(7776000); // 90 days
 
-var rootNode: ByteArray = ByteArray.fromHexString(ETH_NODE);
+let rootNode: Bytes = ETH_NODE;
 
 export function handleNameRegistered(event: NameRegisteredEvent): void {
-  let account = new Account(event.params.owner.toHex());
+  let account = new Account(event.params.owner);
   account.save();
 
   let label = uint256ToByteArray(event.params.id);
-  let domainId = crypto.keccak256(concat(rootNode, label)).toHex();
+  let labelBytes = Bytes.fromByteArray(label);
+  let domainId = Bytes.fromByteArray(crypto.keccak256(concat(rootNode, label)));
   let domain = Domain.load(domainId);
   if (domain == null) {
     // Expected to always exist by the time BaseRegistrar's own
@@ -77,11 +77,11 @@ export function handleNameRegistered(event: NameRegisteredEvent): void {
     // emitted earlier in the same tx) — but testnets can be reset/redeployed
     // without every historical NewOwner being indexed, so guard rather than
     // crash the whole subgraph on a single irregular name.
-    log.warning("handleNameRegistered: no Domain for {}, skipping", [domainId]);
+    log.warning("handleNameRegistered: no Domain for {}, skipping", [domainId.toHexString()]);
     return;
   }
 
-  let registration = new Registration(label.toHex());
+  let registration = new Registration(labelBytes);
   registration.domain = domain.id;
   registration.registrationDate = event.block.timestamp;
   registration.expiryDate = event.params.expires;
@@ -98,7 +98,7 @@ export function handleNameRegistered(event: NameRegisteredEvent): void {
   // WrappedDomain with the correct new owner.
   domain.wrappedOwner = null;
   if (WrappedDomain.load(domain.id) != null) {
-    store.remove("WrappedDomain", domain.id);
+    store.remove("WrappedDomain", domain.id.toHexString());
   }
 
   let labelName = ens.nameByHash(label.toHexString());
@@ -172,10 +172,10 @@ function setNamePreimage(name: string, label: Bytes, cost: BigInt): void {
     return;
   }
 
-  let domainId = crypto.keccak256(concat(rootNode, label)).toHex();
+  let domainId = Bytes.fromByteArray(crypto.keccak256(concat(rootNode, label)));
   let domain = Domain.load(domainId);
   if (domain == null) {
-    log.warning("setNamePreimage: no Domain for {}, skipping", [domainId]);
+    log.warning("setNamePreimage: no Domain for {}, skipping", [domainId.toHexString()]);
     return;
   }
   if (domain.labelName != name) {
@@ -184,7 +184,7 @@ function setNamePreimage(name: string, label: Bytes, cost: BigInt): void {
     domain.save();
   }
 
-  let registration = Registration.load(label.toHex());
+  let registration = Registration.load(Bytes.fromByteArray(label));
   if (registration == null) return;
   registration.labelName = name;
   registration.cost = cost;
@@ -193,15 +193,16 @@ function setNamePreimage(name: string, label: Bytes, cost: BigInt): void {
 
 export function handleNameRenewed(event: NameRenewedEvent): void {
   let label = uint256ToByteArray(event.params.id);
-  let domainId = crypto.keccak256(concat(rootNode, label)).toHex();
-  let registration = Registration.load(label.toHex());
+  let labelBytes = Bytes.fromByteArray(label);
+  let domainId = Bytes.fromByteArray(crypto.keccak256(concat(rootNode, label)));
+  let registration = Registration.load(labelBytes);
   if (registration == null) {
-    log.warning("handleNameRenewed: no Registration for {}, skipping", [label.toHex()]);
+    log.warning("handleNameRenewed: no Registration for {}, skipping", [labelBytes.toHexString()]);
     return;
   }
   let domain = Domain.load(domainId);
   if (domain == null) {
-    log.warning("handleNameRenewed: no Domain for {}, skipping", [domainId]);
+    log.warning("handleNameRenewed: no Domain for {}, skipping", [domainId.toHexString()]);
     return;
   }
 
@@ -220,17 +221,18 @@ export function handleNameRenewed(event: NameRenewedEvent): void {
 }
 
 export function handleNameTransferred(event: TransferEvent): void {
-  let account = new Account(event.params.to.toHex());
+  let account = new Account(event.params.to);
   account.save();
 
   let label = uint256ToByteArray(event.params.tokenId);
-  let registration = Registration.load(label.toHex());
+  let labelBytes = Bytes.fromByteArray(label);
+  let registration = Registration.load(labelBytes);
   if (registration == null) return;
 
-  let domainId = crypto.keccak256(concat(rootNode, label)).toHex();
+  let domainId = Bytes.fromByteArray(crypto.keccak256(concat(rootNode, label)));
   let domain = Domain.load(domainId);
   if (domain == null) {
-    log.warning("handleNameTransferred: no Domain for {}, skipping", [domainId]);
+    log.warning("handleNameTransferred: no Domain for {}, skipping", [domainId.toHexString()]);
     return;
   }
 
@@ -241,7 +243,7 @@ export function handleNameTransferred(event: TransferEvent): void {
   registration.save();
 
   let transferEvent = new NameTransferred(createEventID(event));
-  transferEvent.registration = label.toHex();
+  transferEvent.registration = labelBytes;
   transferEvent.blockNumber = event.block.number.toI32();
   transferEvent.transactionID = event.transaction.hash;
   transferEvent.newOwner = account.id;

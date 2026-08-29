@@ -33,6 +33,8 @@ import {
   createOrLoadAccount,
   createOrLoadDomain,
   ETH_NODE,
+  i32ToBytes,
+  uint256ToByteArray,
 } from "./utils";
 
 export function decodeName(buf: Bytes): Array<string> | null {
@@ -85,8 +87,8 @@ export function handleNameWrapped(event: NameWrappedEvent): void {
   let fuses = event.params.fuses.toI32();
   let blockNumber = event.block.number.toI32();
   let transactionID = event.transaction.hash;
-  let owner = createOrLoadAccount(event.params.owner.toHex());
-  let domain = createOrLoadDomain(node.toHex());
+  let owner = createOrLoadAccount(event.params.owner);
+  let domain = createOrLoadDomain(node);
 
   if (!domain.labelName && label) {
     domain.labelName = label;
@@ -101,7 +103,7 @@ export function handleNameWrapped(event: NameWrappedEvent): void {
   domain.wrappedOwner = owner.id;
   domain.save();
 
-  let wrappedDomain = new WrappedDomain(node.toHex());
+  let wrappedDomain = new WrappedDomain(node);
   wrappedDomain.domain = domain.id;
   wrappedDomain.expiryDate = expiryDate;
   wrappedDomain.fuses = fuses;
@@ -124,23 +126,31 @@ export function handleNameUnwrapped(event: NameUnwrappedEvent): void {
   let node = event.params.node;
   let blockNumber = event.block.number.toI32();
   let transactionID = event.transaction.hash;
-  let owner = createOrLoadAccount(event.params.owner.toHex());
+  let owner = createOrLoadAccount(event.params.owner);
 
-  let domain = createOrLoadDomain(node.toHex());
+  let domain = createOrLoadDomain(node);
   domain.wrappedOwner = null;
-  if (domain.expiryDate && domain.parent != ETH_NODE) {
+  // Nullable-Bytes comparison against a real value (not null) hits the same
+  // compileBinaryOverload crash as comparing against null (docs/plan.md's
+  // AssemblyScript compiler gotcha) — isolate the .equals() call behind a
+  // truthy guard and assign the boolean to a local first, never inline.
+  let parentIsEth = false;
+  if (domain.parent) {
+    parentIsEth = domain.parent!.equals(ETH_NODE);
+  }
+  if (domain.expiryDate && !parentIsEth) {
     domain.expiryDate = null;
   }
   domain.save();
 
   let nameUnwrappedEvent = new NameUnwrapped(createEventID(event));
-  nameUnwrappedEvent.domain = node.toHex();
+  nameUnwrappedEvent.domain = node;
   nameUnwrappedEvent.owner = owner.id;
   nameUnwrappedEvent.blockNumber = blockNumber;
   nameUnwrappedEvent.transactionID = transactionID;
   nameUnwrappedEvent.save();
 
-  store.remove("WrappedDomain", node.toHex());
+  store.remove("WrappedDomain", node.toHexString());
 }
 
 export function handleFusesSet(event: FusesSetEvent): void {
@@ -148,12 +158,12 @@ export function handleFusesSet(event: FusesSetEvent): void {
   let fuses = event.params.fuses;
   let blockNumber = event.block.number.toI32();
   let transactionID = event.transaction.hash;
-  let wrappedDomain = WrappedDomain.load(node.toHex());
+  let wrappedDomain = WrappedDomain.load(node);
   if (wrappedDomain) {
     wrappedDomain.fuses = fuses.toI32();
     wrappedDomain.save();
     if (wrappedDomain.expiryDate && checkPccBurned(wrappedDomain.fuses)) {
-      let domain = createOrLoadDomain(node.toHex());
+      let domain = createOrLoadDomain(node);
       if (!domain.expiryDate || wrappedDomain.expiryDate > domain.expiryDate!) {
         domain.expiryDate = wrappedDomain.expiryDate;
         domain.save();
@@ -161,7 +171,7 @@ export function handleFusesSet(event: FusesSetEvent): void {
     }
   }
   let fusesBurnedEvent = new FusesSet(createEventID(event));
-  fusesBurnedEvent.domain = node.toHex();
+  fusesBurnedEvent.domain = node;
   fusesBurnedEvent.fuses = fuses.toI32();
   fusesBurnedEvent.blockNumber = blockNumber;
   fusesBurnedEvent.transactionID = transactionID;
@@ -173,12 +183,12 @@ export function handleExpiryExtended(event: ExpiryExtendedEvent): void {
   let expiry = event.params.expiry;
   let blockNumber = event.block.number.toI32();
   let transactionID = event.transaction.hash;
-  let wrappedDomain = WrappedDomain.load(node.toHex());
+  let wrappedDomain = WrappedDomain.load(node);
   if (wrappedDomain) {
     wrappedDomain.expiryDate = expiry;
     wrappedDomain.save();
     if (checkPccBurned(wrappedDomain.fuses)) {
-      let domain = createOrLoadDomain(node.toHex());
+      let domain = createOrLoadDomain(node);
       if (!domain.expiryDate || expiry > domain.expiryDate!) {
         domain.expiryDate = expiry;
         domain.save();
@@ -186,7 +196,7 @@ export function handleExpiryExtended(event: ExpiryExtendedEvent): void {
     }
   }
   let expiryExtendedEvent = new ExpiryExtended(createEventID(event));
-  expiryExtendedEvent.domain = node.toHex();
+  expiryExtendedEvent.domain = node;
   expiryExtendedEvent.expiryDate = expiry;
   expiryExtendedEvent.blockNumber = blockNumber;
   expiryExtendedEvent.transactionID = transactionID;
@@ -196,12 +206,15 @@ export function handleExpiryExtended(event: ExpiryExtendedEvent): void {
 function makeWrappedTransfer(
   blockNumber: i32,
   transactionID: Bytes,
-  eventID: string,
+  eventID: Bytes,
   node: BigInt,
-  to: string
+  to: Bytes
 ): void {
   const _to = createOrLoadAccount(to);
-  const namehash = "0x" + node.toHex().slice(2).padStart(64, "0");
+  // Reuses uint256ToByteArray instead of the old manual
+  // "0x" + node.toHex().slice(2).padStart(64, "0") string surgery (fix plan
+  // Phase 5 Decision 6) — same 32-byte big-endian value, no reimplementation.
+  const namehash = Bytes.fromByteArray(uint256ToByteArray(node));
   const domain = createOrLoadDomain(namehash);
   let wrappedDomain = WrappedDomain.load(namehash);
   // new registrations emit the Transfer` event before the NameWrapped event
@@ -230,9 +243,9 @@ export function handleTransferSingle(event: TransferSingleEvent): void {
   makeWrappedTransfer(
     event.block.number.toI32(),
     event.transaction.hash,
-    createEventID(event).concat("-0"),
+    Bytes.fromByteArray(concat(createEventID(event), i32ToBytes(0))),
     event.params.id,
-    event.params.to.toHex()
+    event.params.to
   );
 }
 
@@ -245,9 +258,9 @@ export function handleTransferBatch(event: TransferBatchEvent): void {
     makeWrappedTransfer(
       blockNumber,
       transactionID,
-      createEventID(event).concat("-").concat(i.toString()),
+      Bytes.fromByteArray(concat(createEventID(event), i32ToBytes(i))),
       ids[i],
-      to.toHex()
+      to
     );
   }
 }

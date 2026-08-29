@@ -120,8 +120,8 @@ function createOrReactivateNamespace(
   namespace.parentSlotId = parentSlot.slotId;
   namespace.parentTokenId = event.params.tokenId;
   let parentResourceId = parentSlot.currentResource;
-  if (parentResourceId !== null) {
-    let resourceEntity = ENSv2Resource.load(parentResourceId as string);
+  if (parentResourceId) {
+    let resourceEntity = ENSv2Resource.load(parentResourceId!);
     if (resourceEntity != null) {
       namespace.parentResource = resourceEntity.resource;
     }
@@ -137,24 +137,27 @@ function createOrReactivateNamespace(
 }
 
 function upsertNamespaceLink(
-  parentRegistryId: string,
+  parentRegistryId: Bytes,
   parentSlot: ENSv2NameSlot,
-  previousChildAddress: string | null,
+  previousChildAddress: Bytes | null,
   event: SubregistryUpdated
 ): void {
   // A slot can only point at one subregistry at a time — deactivate the
-  // superseded link first (docs/plan.md Phase 4 Decisions 1-2).
-  if (previousChildAddress !== null) {
-    let previousChildAddressStr: string = previousChildAddress as string;
-    let newChildAddressStr = isZeroAddress(event.params.subregistry)
-      ? ""
-      : event.params.subregistry.toHexString();
-    let isSameTarget = previousChildAddressStr == newChildAddressStr;
+  // superseded link first (docs/plan.md Phase 4 Decisions 1-2). Nullable-
+  // Bytes comparison, not `!==`/`==` (docs/plan.md's AssemblyScript
+  // compiler gotcha, fix plan Phase 5): truthy-guard, then .equals(); an
+  // empty Bytes() replaces the old "" sentinel (fix plan Phase 5 Decision
+  // 5) — a real address is never zero-length, so the semantics are the same.
+  if (previousChildAddress) {
+    let newChildAddress: Bytes = isZeroAddress(event.params.subregistry)
+      ? Bytes.empty()
+      : event.params.subregistry;
+    let isSameTarget = previousChildAddress!.equals(newChildAddress);
     if (!isSameTarget) {
       let oldLinkId = namespaceLinkId(
         parentRegistryId,
         parentSlot.slotId,
-        previousChildAddressStr
+        previousChildAddress!
       );
       let oldLink = ENSv2NamespaceLink.load(oldLinkId);
       if (oldLink != null) {
@@ -168,7 +171,7 @@ function upsertNamespaceLink(
     return;
   }
 
-  let childAddress = event.params.subregistry.toHexString();
+  let childAddress = event.params.subregistry;
   let linkId = namespaceLinkId(parentRegistryId, parentSlot.slotId, childAddress);
   let link = ENSv2NamespaceLink.load(linkId);
   if (link == null) {
@@ -192,7 +195,7 @@ function upsertNamespaceLink(
 // never deletes (docs/plan.md Phase 4 Decision 3).
 function deactivateNamespacesFromParentSlot(
   parentSlot: ENSv2NameSlot,
-  previousChildRegistryId: string,
+  previousChildRegistryId: Bytes,
   block: ethereum.Block
 ): void {
   for (let i = 0; i < parentSlot.pathCount; i++) {
@@ -217,7 +220,7 @@ function deactivateNamespacesFromParentSlot(
 }
 
 export function handleSubregistryUpdated(event: SubregistryUpdated): void {
-  let parentRegistryId = event.address.toHexString();
+  let parentRegistryId = event.address;
   let parentSlotId = toSlotId(event.params.tokenId);
   let parentSlot = ENSv2NameSlot.load(nameSlotId(parentRegistryId, parentSlotId));
   if (parentSlot == null) {
@@ -231,7 +234,7 @@ export function handleSubregistryUpdated(event: SubregistryUpdated): void {
     : event.params.subregistry;
   parentSlot.subregistry = isZeroAddress(event.params.subregistry)
     ? null
-    : event.params.subregistry.toHexString();
+    : event.params.subregistry;
   parentSlot.updatedAt = event.block.timestamp;
   parentSlot.updatedAtBlock = event.block.number;
   parentSlot.save();
@@ -250,10 +253,10 @@ export function handleSubregistryUpdated(event: SubregistryUpdated): void {
   upsertNamespaceLink(parentRegistryId, parentSlot, previousChildAddress, event);
 
   if (isZeroAddress(event.params.subregistry)) {
-    if (previousChildAddress !== null) {
+    if (previousChildAddress) {
       deactivateNamespacesFromParentSlot(
         parentSlot,
-        previousChildAddress as string,
+        previousChildAddress!,
         event.block
       );
     }
@@ -261,7 +264,7 @@ export function handleSubregistryUpdated(event: SubregistryUpdated): void {
   }
 
   let childRegistry = getOrCreateRegistry(
-    event.params.subregistry.toHexString(),
+    event.params.subregistry,
     event.params.subregistry,
     event.block
   );
@@ -317,7 +320,7 @@ export function materializePathsForSlot(
       continue;
     }
 
-    let pathId = pathNamehash(namespace.baseNamehash, slot.labelhash).toHexString();
+    let pathId = pathNamehash(namespace.baseNamehash, slot.labelhash);
     let path = ENSv2NamePath.load(pathId);
     if (path == null) {
       path = materializeNamePath(pathId, namespace, slot, event);
@@ -334,7 +337,7 @@ export function materializePathsForSlot(
 }
 
 function materializeNamePath(
-  pathId: string,
+  pathId: Bytes,
   namespace: ENSv2Namespace,
   slot: ENSv2NameSlot,
   event: LabelRegistered
@@ -355,9 +358,9 @@ function materializeNamePath(
   }
   path.label = label;
 
-  if (parentPathId !== null) {
-    path.parent = parentPathId as string;
-    let parentPath = ENSv2NamePath.load(parentPathId as string);
+  if (parentPathId) {
+    path.parent = parentPathId!;
+    let parentPath = ENSv2NamePath.load(parentPathId!);
     if (parentPath != null) {
       depth = parentPath.depth + 1;
       if (parentPath.name !== null && label !== null) {
@@ -385,13 +388,13 @@ function materializeNamePath(
 }
 
 export function handleResolverUpdated(event: ResolverUpdated): void {
-  let registryId = event.address.toHexString();
+  let registryId = event.address;
   let slotId = toSlotId(event.params.tokenId);
   let slot = ENSv2NameSlot.load(nameSlotId(registryId, slotId));
   if (slot == null) {
     log.warning("ResolverUpdated for unknown slot {} on registry {}", [
       slotId.toString(),
-      registryId,
+      registryId.toHexString(),
     ]);
     return;
   }
@@ -401,9 +404,9 @@ export function handleResolverUpdated(event: ResolverUpdated): void {
     slot.resolver = null;
   } else {
     slot.resolverAddress = event.params.resolver;
-    let resolverEntity = ENSv2Resolver.load(event.params.resolver.toHexString());
+    let resolverEntity = ENSv2Resolver.load(event.params.resolver);
     if (resolverEntity == null) {
-      resolverEntity = new ENSv2Resolver(event.params.resolver.toHexString());
+      resolverEntity = new ENSv2Resolver(event.params.resolver);
       resolverEntity.address = event.params.resolver;
       resolverEntity.save();
     }
@@ -430,7 +433,7 @@ export function handleResolverUpdated(event: ResolverUpdated): void {
 // entity (not in the proposal's history-entity list, same precedent as
 // LabelReserved in Phase 2).
 export function handleParentUpdated(event: ParentUpdated): void {
-  let registryId = event.address.toHexString();
+  let registryId = event.address;
   let registry = ENSv2Registry.load(registryId);
   if (registry == null) {
     return;
@@ -440,7 +443,7 @@ export function handleParentUpdated(event: ParentUpdated): void {
     registry.canonicalParentRegistry = null;
   } else {
     let parentRegistry = getOrCreateRegistry(
-      event.params.parent.toHexString(),
+      event.params.parent,
       event.params.parent,
       event.block
     );

@@ -56,7 +56,7 @@ describe("handleNameUnwrapped", () => {
     const labelhash =
       "0x9c22ff5f21f0b81b113e63f7db6da94fedef11b2119b4088b89664fb9a3cb658";
 
-    let domain = new Domain(testEthNamehash);
+    let domain = new Domain(Bytes.fromHexString(testEthNamehash));
     domain.name = "test.eth";
     domain.labelName = "test";
     domain.labelhash = Bytes.fromHexString(labelhash);
@@ -64,17 +64,17 @@ describe("handleNameUnwrapped", () => {
     domain.subdomainCount = 0;
     domain.isMigrated = true;
     domain.createdAt = BigInt.fromI32(0);
-    domain.owner = NAME_WRAPPER_ADDRESS;
-    domain.registrant = NAME_WRAPPER_ADDRESS;
-    domain.wrappedOwner = DEFAULT_OWNER;
+    domain.owner = Bytes.fromHexString(NAME_WRAPPER_ADDRESS);
+    domain.registrant = Bytes.fromHexString(NAME_WRAPPER_ADDRESS);
+    domain.wrappedOwner = Bytes.fromHexString(DEFAULT_OWNER);
     domain.expiryDate = BigInt.fromI32(123456789);
     domain.save();
 
-    const wrappedDomain = new WrappedDomain(testEthNamehash);
-    wrappedDomain.domain = testEthNamehash;
+    const wrappedDomain = new WrappedDomain(Bytes.fromHexString(testEthNamehash));
+    wrappedDomain.domain = Bytes.fromHexString(testEthNamehash);
     wrappedDomain.expiryDate = BigInt.fromI32(123456789);
     wrappedDomain.fuses = 0;
-    wrappedDomain.owner = DEFAULT_OWNER;
+    wrappedDomain.owner = Bytes.fromHexString(DEFAULT_OWNER);
     wrappedDomain.name = "test.eth";
     wrappedDomain.save();
 
@@ -95,25 +95,25 @@ describe("handleNameUnwrapped", () => {
     const labelhash =
       "0x678c189fde5058554d934d6af17e41750fa2a94b61371c5ea958a7595e146324";
 
-    let domain = new Domain(subNamehash);
+    let domain = new Domain(Bytes.fromHexString(subNamehash));
     domain.name = "cool.test.eth";
     domain.labelName = "cool";
     domain.labelhash = Bytes.fromHexString(labelhash);
-    domain.parent = testEthNamehash;
+    domain.parent = Bytes.fromHexString(testEthNamehash);
     domain.subdomainCount = 0;
     domain.isMigrated = true;
     domain.createdAt = BigInt.fromI32(0);
-    domain.owner = NAME_WRAPPER_ADDRESS;
-    domain.registrant = NAME_WRAPPER_ADDRESS;
-    domain.wrappedOwner = DEFAULT_OWNER;
+    domain.owner = Bytes.fromHexString(NAME_WRAPPER_ADDRESS);
+    domain.registrant = Bytes.fromHexString(NAME_WRAPPER_ADDRESS);
+    domain.wrappedOwner = Bytes.fromHexString(DEFAULT_OWNER);
     domain.expiryDate = BigInt.fromI32(123456789);
     domain.save();
 
-    const wrappedDomain = new WrappedDomain(subNamehash);
-    wrappedDomain.domain = subNamehash;
+    const wrappedDomain = new WrappedDomain(Bytes.fromHexString(subNamehash));
+    wrappedDomain.domain = Bytes.fromHexString(subNamehash);
     wrappedDomain.expiryDate = BigInt.fromI32(123456789);
     wrappedDomain.fuses = 0;
-    wrappedDomain.owner = DEFAULT_OWNER;
+    wrappedDomain.owner = Bytes.fromHexString(DEFAULT_OWNER);
     wrappedDomain.name = "test.eth";
     wrappedDomain.save();
 

@@ -1,20 +1,31 @@
 // Import types and APIs from graph-ts
-import { BigInt, ByteArray, ethereum, log } from "@graphprotocol/graph-ts";
+import { Address, BigInt, ByteArray, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 import { Account, Domain } from "./types/schema";
 
-export function createEventID(event: ethereum.Event): string {
-  return event.block.number
-    .toString()
-    .concat("-")
-    .concat(event.logIndex.toString());
+// Fixed-width Bytes concatenation, no delimiter needed: block.number and
+// logIndex are each encoded as a 32-byte big-endian value via
+// uint256ToByteArray, so there's no ambiguity despite no separator
+// (fix plan Phase 5 Decision 1).
+export function createEventID(event: ethereum.Event): Bytes {
+  return Bytes.fromByteArray(
+    concat(
+      uint256ToByteArray(event.block.number),
+      uint256ToByteArray(event.logIndex)
+    )
+  );
 }
 
-export const ETH_NODE =
-  "0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae";
-export const ROOT_NODE =
-  "0x0000000000000000000000000000000000000000000000000000000000000000";
-export const EMPTY_ADDRESS = "0x0000000000000000000000000000000000000000";
-export const EMPTY_ADDRESS_BYTEARRAY = new ByteArray(20);
+export const ETH_NODE = Bytes.fromHexString(
+  "0x93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae"
+);
+export const ROOT_NODE = Bytes.fromHexString(
+  "0x0000000000000000000000000000000000000000000000000000000000000000"
+);
+// Address.zero() replaces both the old EMPTY_ADDRESS (string) and
+// EMPTY_ADDRESS_BYTEARRAY (ByteArray) constants — both were the same 20
+// zero bytes under two different types, only needed because ids used to be
+// strings; Bytes ids make the distinction unnecessary.
+export const EMPTY_ADDRESS = Address.zero();
 
 // Helper for concatenating two byte arrays
 export function concat(a: ByteArray, b: ByteArray): ByteArray {
@@ -45,7 +56,20 @@ export function uint256ToByteArray(i: BigInt): ByteArray {
   return byteArrayFromHex(hex);
 }
 
-export function createOrLoadAccount(address: string): Account {
+// 4-byte big-endian encoding for small loop/index counters (fix plan Phase 5
+// Decision 1) — the i32 equivalent of uint256ToByteArray, for composite ids
+// that embed a batch-transfer loop index or a path/namespace index counter
+// rather than a full BigInt.
+export function i32ToBytes(i: i32): ByteArray {
+  let out = new Uint8Array(4);
+  out[0] = ((i >> 24) & 0xff) as u8;
+  out[1] = ((i >> 16) & 0xff) as u8;
+  out[2] = ((i >> 8) & 0xff) as u8;
+  out[3] = (i & 0xff) as u8;
+  return changetype<ByteArray>(out);
+}
+
+export function createOrLoadAccount(address: Bytes): Account {
   let account = Account.load(address);
   if (account == null) {
     account = new Account(address);
@@ -55,7 +79,7 @@ export function createOrLoadAccount(address: string): Account {
   return account;
 }
 
-export function createOrLoadDomain(node: string): Domain {
+export function createOrLoadDomain(node: Bytes): Domain {
   let domain = Domain.load(node);
   if (domain == null) {
     domain = new Domain(node);

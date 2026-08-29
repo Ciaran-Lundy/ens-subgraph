@@ -1,4 +1,4 @@
-import { Address, BigInt, ethereum } from "@graphprotocol/graph-ts";
+import { Address, BigInt, Bytes, ethereum } from "@graphprotocol/graph-ts";
 import {
   afterEach,
   assert,
@@ -123,14 +123,22 @@ afterEach(() => {
   clearStore();
 });
 
+// assert.fieldEquals compares an entity's id as its lowercase-hex string
+// form regardless of the underlying GraphQL type (fix plan Phase 5).
+// Production code now builds these ids as fixed-width Bytes concatenation
+// with no delimiter: addresses are 20 bytes, a BigInt component is a
+// 32-byte big-endian value (src/utils.ts::uint256ToByteArray) — this mirrors
+// that exact encoding to reproduce the same hex string.
+function bigIntHex32(i: BigInt): string {
+  return i.toHex().slice(2).padStart(64, "0");
+}
+
 test("grant then revoke on the same (contract, resource, account) leaves the assignment at the latest bitmap and two history rows", () => {
   let resource = BigInt.fromI32(1);
   let assignmentId = Address.fromString(REGISTRY_ADDRESS)
     .toHexString()
-    .concat("-")
-    .concat(resource.toString())
-    .concat("-")
-    .concat(Address.fromString(ACCOUNT).toHexString());
+    .concat(bigIntHex32(resource))
+    .concat(Address.fromString(ACCOUNT).toHexString().slice(2));
 
   let grantEvent = createRegistryEACRolesChangedEvent(
     REGISTRY_ADDRESS,
@@ -157,14 +165,12 @@ test("grant then revoke on the same (contract, resource, account) leaves the ass
   assert.fieldEquals("ENSv2RoleAssignment", assignmentId, "roleBitmap", "0");
 
   assert.entityCount("ENSv2RoleChange", 2);
-  let firstHistoryId = grantEvent.block.number
-    .toString()
-    .concat("-")
-    .concat(grantEvent.logIndex.toString());
-  let secondHistoryId = revokeEvent.block.number
-    .toString()
-    .concat("-")
-    .concat(revokeEvent.logIndex.toString());
+  let firstHistoryId = "0x"
+    .concat(bigIntHex32(grantEvent.block.number))
+    .concat(bigIntHex32(grantEvent.logIndex));
+  let secondHistoryId = "0x"
+    .concat(bigIntHex32(revokeEvent.block.number))
+    .concat(bigIntHex32(revokeEvent.logIndex));
   assert.fieldEquals("ENSv2RoleChange", firstHistoryId, "newRoleBitmap", "1");
   assert.fieldEquals("ENSv2RoleChange", secondHistoryId, "newRoleBitmap", "0");
 });
@@ -173,10 +179,8 @@ test("a registry-side role event with no matching ENSv2Resource indexes with res
   let resource = BigInt.fromI32(2);
   let assignmentId = Address.fromString(REGISTRY_ADDRESS)
     .toHexString()
-    .concat("-")
-    .concat(resource.toString())
-    .concat("-")
-    .concat(Address.fromString(ACCOUNT).toHexString());
+    .concat(bigIntHex32(resource))
+    .concat(Address.fromString(ACCOUNT).toHexString().slice(2));
 
   handleEACRolesChanged(
     createRegistryEACRolesChangedEvent(
@@ -188,12 +192,11 @@ test("a registry-side role event with no matching ENSv2Resource indexes with res
     )
   );
 
-  let assignment = ENSv2RoleAssignment.load(assignmentId);
+  let assignment = ENSv2RoleAssignment.load(Bytes.fromHexString(assignmentId));
   assert.assertNotNull(assignment);
   if (assignment != null) {
     let resourceEntityId = assignment.resourceEntity;
-    let hasResourceEntity = resourceEntityId !== null;
-    assert.assertTrue(!hasResourceEntity);
+    assert.assertTrue(!resourceEntityId);
   }
 });
 
@@ -201,10 +204,8 @@ test("a resolver-side role event also indexes with resourceEntity null, proving 
   let resource = BigInt.fromI32(3);
   let assignmentId = Address.fromString(RESOLVER_ADDRESS)
     .toHexString()
-    .concat("-")
-    .concat(resource.toString())
-    .concat("-")
-    .concat(Address.fromString(ACCOUNT).toHexString());
+    .concat(bigIntHex32(resource))
+    .concat(Address.fromString(ACCOUNT).toHexString().slice(2));
 
   handleResolverEACRolesChanged(
     createResolverEACRolesChangedEvent(
@@ -216,12 +217,11 @@ test("a resolver-side role event also indexes with resourceEntity null, proving 
     )
   );
 
-  let assignment = ENSv2RoleAssignment.load(assignmentId);
+  let assignment = ENSv2RoleAssignment.load(Bytes.fromHexString(assignmentId));
   assert.assertNotNull(assignment);
   if (assignment != null) {
     let resourceEntityId = assignment.resourceEntity;
-    let hasResourceEntity = resourceEntityId !== null;
-    assert.assertTrue(!hasResourceEntity);
+    assert.assertTrue(!resourceEntityId);
   }
   assert.fieldEquals("ENSv2RoleAssignment", assignmentId, "roleBitmap", "1");
 });
@@ -230,10 +230,8 @@ test("role-event-then-ProxyDeployed and ProxyDeployed-then-role-event produce id
   let resource = BigInt.fromI32(4);
   let registryId = Address.fromString(REGISTRY_ADDRESS).toHexString();
   let assignmentId = registryId
-    .concat("-")
-    .concat(resource.toString())
-    .concat("-")
-    .concat(Address.fromString(ACCOUNT).toHexString());
+    .concat(bigIntHex32(resource))
+    .concat(Address.fromString(ACCOUNT).toHexString().slice(2));
 
   // Order 1: role event first, then discovery.
   handleEACRolesChanged(

@@ -33,7 +33,7 @@ export function kindForAddress(address: Address): string {
 }
 
 export function getOrCreateRegistry(
-  id: string,
+  id: Bytes,
   address: Address,
   block: ethereum.Block
 ): ENSv2Registry {
@@ -52,10 +52,10 @@ export function getOrCreateRegistry(
 }
 
 export function getOrCreateRootNamespace(
-  rootRegistryId: string,
+  rootRegistryId: Bytes,
   block: ethereum.Block
 ): ENSv2Namespace {
-  let rootNamehash = Bytes.fromHexString(ROOT_NODE);
+  let rootNamehash = ROOT_NODE;
   let id = namespaceId(rootRegistryId, rootNamehash);
   let namespace = ENSv2Namespace.load(id);
   if (namespace == null) {
@@ -109,7 +109,7 @@ export function getOrCreateRootNamespace(
 export function handleProxyDeployed(event: ProxyDeployed): void {
   ENSv2RegistryTemplate.create(event.params.proxyAddress);
   getOrCreateRegistry(
-    event.params.proxyAddress.toHexString(),
+    event.params.proxyAddress,
     event.params.proxyAddress,
     event.block
   );

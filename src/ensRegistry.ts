@@ -1,14 +1,14 @@
 // Import types and APIs from graph-ts
-import { BigInt, crypto, ens } from "@graphprotocol/graph-ts";
+import { BigInt, Bytes, crypto, ens } from "@graphprotocol/graph-ts";
 
 import {
   checkValidLabel,
   concat,
   createEventID,
   EMPTY_ADDRESS,
-  EMPTY_ADDRESS_BYTEARRAY,
   ROOT_NODE,
 } from "./utils";
+import { createResolverID } from "./resolver";
 
 // Import event types from the registry contract ABI
 import {
@@ -34,9 +34,9 @@ import { processApprovalForAll } from "./accessControl";
 
 const BIG_INT_ZERO = BigInt.fromI32(0);
 
-function createDomain(node: string, timestamp: BigInt): Domain {
+function createDomain(node: Bytes, timestamp: BigInt): Domain {
   let domain = new Domain(node);
-  if (node == ROOT_NODE) {
+  if (node.equals(ROOT_NODE)) {
     domain = new Domain(node);
     domain.owner = EMPTY_ADDRESS;
     domain.isMigrated = true;
@@ -47,28 +47,33 @@ function createDomain(node: string, timestamp: BigInt): Domain {
 }
 
 function getDomain(
-  node: string,
+  node: Bytes,
   timestamp: BigInt = BIG_INT_ZERO
 ): Domain | null {
   let domain = Domain.load(node);
-  if (domain == null && node == ROOT_NODE) {
+  if (domain == null && node.equals(ROOT_NODE)) {
     return createDomain(node, timestamp);
   } else {
     return domain;
   }
 }
 
-function makeSubnode(event: NewOwnerEvent): string {
-  return crypto
-    .keccak256(concat(event.params.node, event.params.label))
-    .toHexString();
+function makeSubnode(event: NewOwnerEvent): Bytes {
+  return Bytes.fromByteArray(
+    crypto.keccak256(concat(event.params.node, event.params.label))
+  );
 }
 
-function recurseDomainDelete(domain: Domain): string | null {
+// The `domain.resolver!.split("-")[0] == EMPTY_ADDRESS` disjunct this used
+// to have is dead code, not something a Bytes id can express anyway:
+// handleNewResolver (below) is Domain.resolver's only write site, and it
+// sets the field to null exactly when the resolver address is the zero
+// address, never to a zero-address-prefixed id (fix plan Phase 5 Decision
+// 4 — traced every write site to confirm before deleting, not assumed).
+function recurseDomainDelete(domain: Domain): Bytes | null {
   if (
-    (domain.resolver == null ||
-      domain.resolver!.split("-")[0] == EMPTY_ADDRESS) &&
-    domain.owner == EMPTY_ADDRESS &&
+    !domain.resolver &&
+    domain.owner.equals(EMPTY_ADDRESS) &&
     domain.subdomainCount == 0
   ) {
     const parentDomain = Domain.load(domain.parent!);
@@ -91,12 +96,12 @@ function saveDomain(domain: Domain): void {
 
 // Handler for NewOwner events
 function _handleNewOwner(event: NewOwnerEvent, isMigrated: boolean): void {
-  let account = new Account(event.params.owner.toHexString());
+  let account = new Account(event.params.owner);
   account.save();
 
   let subnode = makeSubnode(event);
   let domain = getDomain(subnode, event.block.timestamp);
-  let parent = getDomain(event.params.node.toHexString());
+  let parent = getDomain(event.params.node);
 
   if (domain == null) {
     domain = new Domain(subnode);
@@ -104,7 +109,7 @@ function _handleNewOwner(event: NewOwnerEvent, isMigrated: boolean): void {
     domain.subdomainCount = 0;
   }
 
-  if (domain.parent == null && parent != null) {
+  if (!domain.parent && parent != null) {
     parent.subdomainCount = parent.subdomainCount + 1;
     parent.save();
   }
@@ -117,10 +122,7 @@ function _handleNewOwner(event: NewOwnerEvent, isMigrated: boolean): void {
     } else {
       label = "[" + event.params.label.toHexString().slice(2) + "]";
     }
-    if (
-      event.params.node.toHexString() ==
-      "0x0000000000000000000000000000000000000000000000000000000000000000"
-    ) {
+    if (event.params.node.equals(ROOT_NODE)) {
       domain.name = label;
     } else {
       parent = parent!;
@@ -131,8 +133,8 @@ function _handleNewOwner(event: NewOwnerEvent, isMigrated: boolean): void {
     }
   }
 
-  domain.owner = event.params.owner.toHexString();
-  domain.parent = event.params.node.toHexString();
+  domain.owner = event.params.owner;
+  domain.parent = event.params.node;
   domain.labelhash = event.params.label;
   domain.isMigrated = isMigrated;
   saveDomain(domain);
@@ -140,49 +142,46 @@ function _handleNewOwner(event: NewOwnerEvent, isMigrated: boolean): void {
   let domainEvent = new NewOwner(createEventID(event));
   domainEvent.blockNumber = event.block.number.toI32();
   domainEvent.transactionID = event.transaction.hash;
-  domainEvent.parentDomain = event.params.node.toHexString();
+  domainEvent.parentDomain = event.params.node;
   domainEvent.domain = subnode;
-  domainEvent.owner = event.params.owner.toHexString();
+  domainEvent.owner = event.params.owner;
   domainEvent.save();
 }
 
 // Handler for Transfer events
 export function handleTransfer(event: TransferEvent): void {
-  let node = event.params.node.toHexString();
+  let node = event.params.node;
 
-  let account = new Account(event.params.owner.toHexString());
+  let account = new Account(event.params.owner);
   account.save();
 
   // Update the domain owner
   let domain = getDomain(node)!;
 
-  domain.owner = event.params.owner.toHexString();
+  domain.owner = event.params.owner;
   saveDomain(domain);
 
   let domainEvent = new Transfer(createEventID(event));
   domainEvent.blockNumber = event.block.number.toI32();
   domainEvent.transactionID = event.transaction.hash;
   domainEvent.domain = node;
-  domainEvent.owner = event.params.owner.toHexString();
+  domainEvent.owner = event.params.owner;
   domainEvent.save();
 }
 
 // Handler for NewResolver events
 export function handleNewResolver(event: NewResolverEvent): void {
-  let id: string | null;
+  let id: Bytes | null;
 
   // if resolver is set to 0x0, set id to null
   // we don't want to create a resolver entity for 0x0
-  if (event.params.resolver.equals(EMPTY_ADDRESS_BYTEARRAY)) {
+  if (event.params.resolver.equals(EMPTY_ADDRESS)) {
     id = null;
   } else {
-    id = event.params.resolver
-      .toHexString()
-      .concat("-")
-      .concat(event.params.node.toHexString());
+    id = createResolverID(event.params.node, event.params.resolver);
   }
 
-  let node = event.params.node.toHexString();
+  let node = event.params.node;
   let domain = getDomain(node)!;
   domain.resolver = id;
 
@@ -190,7 +189,7 @@ export function handleNewResolver(event: NewResolverEvent): void {
     let resolver = Resolver.load(id);
     if (resolver == null) {
       resolver = new Resolver(id);
-      resolver.domain = event.params.node.toHexString();
+      resolver.domain = event.params.node;
       resolver.address = event.params.resolver;
       resolver.save();
       // since this is a new resolver entity, there can't be a resolved address yet so set to null
@@ -221,7 +220,7 @@ export function handleNewResolver(event: NewResolverEvent): void {
 
 // Handler for NewTTL events
 export function handleNewTTL(event: NewTTLEvent): void {
-  let node = event.params.node.toHexString();
+  let node = event.params.node;
   let domain = getDomain(node);
   // For the edge case that a domain's owner and resolver are set to empty
   // in the same transaction as setting TTL
@@ -252,21 +251,21 @@ export function handleNewOwnerOldRegistry(event: NewOwnerEvent): void {
 }
 
 export function handleNewResolverOldRegistry(event: NewResolverEvent): void {
-  let node = event.params.node.toHexString();
+  let node = event.params.node;
   let domain = getDomain(node, event.block.timestamp)!;
-  if (node == ROOT_NODE || !domain.isMigrated) {
+  if (node.equals(ROOT_NODE) || !domain.isMigrated) {
     handleNewResolver(event);
   }
 }
 export function handleNewTTLOldRegistry(event: NewTTLEvent): void {
-  let domain = getDomain(event.params.node.toHexString())!;
+  let domain = getDomain(event.params.node)!;
   if (domain.isMigrated == false) {
     handleNewTTL(event);
   }
 }
 
 export function handleTransferOldRegistry(event: TransferEvent): void {
-  let domain = getDomain(event.params.node.toHexString())!;
+  let domain = getDomain(event.params.node)!;
   if (domain.isMigrated == false) {
     handleTransfer(event);
   }

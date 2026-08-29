@@ -123,7 +123,7 @@ describe("legacy/wrapped controller", () => {
     label: string
   ): void => {
     const newNewOwnerEvent = createNewOwnerEvent(
-      ETH_NODE,
+      ETH_NODE.toHexString(),
       labelhash,
       DEFAULT_OWNER
     );
@@ -136,7 +136,7 @@ describe("legacy/wrapped controller", () => {
     );
     handleNameRegistered(newRegistrationEvent);
 
-    let fetchedRegistration = Registration.load(labelhash)!;
+    let fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
 
     // set labelName to null because handleNameRegistered sets it to a mocked value of "default"
     // which comes from ens.nameByHash()
@@ -152,7 +152,7 @@ describe("legacy/wrapped controller", () => {
       );
     handleNameRegisteredByWrappedController(nameRegisteredByControllerEvent);
 
-    fetchedRegistration = Registration.load(labelhash)!;
+    fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
 
     assert.assertNull(fetchedRegistration.labelName);
   };
@@ -218,7 +218,7 @@ describe("legacy/wrapped controller", () => {
     const label = "test";
 
     const newNewOwnerEvent = createNewOwnerEvent(
-      ETH_NODE,
+      ETH_NODE.toHexString(),
       labelhash,
       DEFAULT_OWNER
     );
@@ -231,7 +231,7 @@ describe("legacy/wrapped controller", () => {
     );
     handleNameRegistered(newRegistrationEvent);
 
-    let fetchedRegistration = Registration.load(labelhash)!;
+    let fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
 
     fetchedRegistration.labelName = "eth";
     fetchedRegistration.save();
@@ -245,7 +245,7 @@ describe("legacy/wrapped controller", () => {
       );
     handleNameRegisteredByWrappedController(nameRegisteredByControllerEvent);
 
-    fetchedRegistration = Registration.load(labelhash)!;
+    fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
 
     assert.assertTrue(fetchedRegistration.labelName == label);
   });
@@ -410,7 +410,7 @@ describe("unwrapped controller", () => {
     label: string
   ): void => {
     const newNewOwnerEvent = createNewOwnerEvent(
-      ETH_NODE,
+      ETH_NODE.toHexString(),
       labelhash,
       DEFAULT_OWNER
     );
@@ -423,7 +423,7 @@ describe("unwrapped controller", () => {
     );
     handleNameRegistered(newRegistrationEvent);
 
-    let fetchedRegistration = Registration.load(labelhash)!;
+    let fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
 
     // set labelName to null because handleNameRegistered sets it to a mocked value of "default"
     // which comes from ens.nameByHash()
@@ -443,7 +443,7 @@ describe("unwrapped controller", () => {
       nameRegisteredByUnwrappedControllerEvent
     );
 
-    fetchedRegistration = Registration.load(labelhash)!;
+    fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
 
     assert.assertNull(fetchedRegistration.labelName);
   };
@@ -509,7 +509,7 @@ describe("unwrapped controller", () => {
     const label = "test";
 
     const newNewOwnerEvent = createNewOwnerEvent(
-      ETH_NODE,
+      ETH_NODE.toHexString(),
       labelhash,
       DEFAULT_OWNER
     );
@@ -522,7 +522,7 @@ describe("unwrapped controller", () => {
     );
     handleNameRegistered(newRegistrationEvent);
 
-    let fetchedRegistration = Registration.load(labelhash)!;
+    let fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
 
     fetchedRegistration.labelName = "eth";
     fetchedRegistration.save();
@@ -540,7 +540,7 @@ describe("unwrapped controller", () => {
       nameRegisteredByUnwrappedControllerEvent
     );
 
-    fetchedRegistration = Registration.load(labelhash)!;
+    fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
 
     assert.assertTrue(fetchedRegistration.labelName == label);
     assert.assertTrue(
@@ -557,7 +557,7 @@ describe("unwrapped controller", () => {
 
     // First register the name
     const newNewOwnerEvent = createNewOwnerEvent(
-      ETH_NODE,
+      ETH_NODE.toHexString(),
       labelhash,
       DEFAULT_OWNER
     );
@@ -570,7 +570,7 @@ describe("unwrapped controller", () => {
     );
     handleNameRegistered(newRegistrationEvent);
 
-    let fetchedRegistration = Registration.load(labelhash)!;
+    let fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
 
     fetchedRegistration.labelName = "eth";
     fetchedRegistration.save();
@@ -589,7 +589,7 @@ describe("unwrapped controller", () => {
       nameRegisteredByUnwrappedControllerEvent
     );
 
-    fetchedRegistration = Registration.load(labelhash)!;
+    fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
     assert.assertTrue(fetchedRegistration.labelName == label);
     assert.assertTrue(
       fetchedRegistration.cost!.equals(BigInt.fromString("1000000000"))
@@ -607,7 +607,7 @@ describe("unwrapped controller", () => {
       nameRenewedByUnwrappedControllerEvent
     );
 
-    fetchedRegistration = Registration.load(labelhash)!;
+    fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
     assert.assertTrue(fetchedRegistration.labelName == label);
     assert.assertTrue(
       fetchedRegistration.cost!.equals(BigInt.fromString("2000000000"))
@@ -623,7 +623,7 @@ describe("unwrapped controller", () => {
 
     // First register the name
     const newNewOwnerEvent = createNewOwnerEvent(
-      ETH_NODE,
+      ETH_NODE.toHexString(),
       labelhash,
       DEFAULT_OWNER
     );
@@ -636,7 +636,7 @@ describe("unwrapped controller", () => {
     );
     handleNameRegistered(newRegistrationEvent);
 
-    let fetchedRegistration = Registration.load(labelhash)!;
+    let fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
     fetchedRegistration.labelName = null;
     fetchedRegistration.cost = BigInt.fromString("1000000000");
     fetchedRegistration.save();
@@ -653,7 +653,7 @@ describe("unwrapped controller", () => {
       nameRenewedByUnwrappedControllerEvent
     );
 
-    fetchedRegistration = Registration.load(labelhash)!;
+    fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
     assert.assertTrue(
       fetchedRegistration.cost!.equals(BigInt.fromString("1000000000"))
     );

@@ -1,24 +1,30 @@
 // ENSv2 ID and helper functions. Reuse src/utils.ts for anything not
 // specific to the registry-scoped ENSv2 entity model (concat,
-// checkValidLabel, createEventID, uint256ToByteArray, createOrLoadAccount,
-// createOrLoadDomain) — do not duplicate those here.
+// checkValidLabel, createEventID, uint256ToByteArray, i32ToBytes,
+// createOrLoadAccount, createOrLoadDomain) — do not duplicate those here.
+//
+// Every composite id below is a fixed-width Bytes concatenation with no
+// delimiter (fix plan Phase 5 Decision 1): each component is either already
+// a fixed byte width (an address or namehash) or made one via
+// uint256ToByteArray (32-byte big-endian BigInt) / i32ToBytes (4-byte
+// big-endian counter) — so there's no ambiguity despite no separator byte.
 import { Address, BigInt, Bytes, crypto } from "@graphprotocol/graph-ts";
-import { concat } from "./utils";
+import { concat, i32ToBytes, uint256ToByteArray } from "./utils";
 
 // 2^32, used to zero the lower 32 bits of a BigInt without needing
 // BigInt.bitAnd/bitXor (not available in the installed graph-ts 0.31.0).
 const TWO_POW_32 = BigInt.fromI64(4294967296);
 
-export function nameSlotId(registry: string, slotId: BigInt): string {
-  return registry.concat("-").concat(slotId.toString());
+export function nameSlotId(registry: Bytes, slotId: BigInt): Bytes {
+  return Bytes.fromByteArray(concat(registry, uint256ToByteArray(slotId)));
 }
 
-export function resourceId(registry: string, resource: BigInt): string {
-  return registry.concat("-").concat(resource.toString());
+export function resourceId(registry: Bytes, resource: BigInt): Bytes {
+  return Bytes.fromByteArray(concat(registry, uint256ToByteArray(resource)));
 }
 
-export function tokenEntityId(registry: string, tokenId: BigInt): string {
-  return registry.concat("-").concat(tokenId.toString());
+export function tokenEntityId(registry: Bytes, tokenId: BigInt): Bytes {
+  return Bytes.fromByteArray(concat(registry, uint256ToByteArray(tokenId)));
 }
 
 // Port of LibLabel.withVersion(anyId, 0) from contracts-v2's
@@ -36,35 +42,36 @@ export function isZeroAddress(a: Address): boolean {
   return a.equals(Address.zero());
 }
 
-export function slotPathIndexId(slotId: string, index: i32): string {
-  return slotId.concat("-").concat(index.toString());
+export function slotPathIndexId(slotId: Bytes, index: i32): Bytes {
+  return Bytes.fromByteArray(concat(slotId, i32ToBytes(index)));
 }
 
 export function registryNamespaceIndexId(
-  registryId: string,
+  registryId: Bytes,
   index: i32
-): string {
-  return registryId.concat("-").concat(index.toString());
+): Bytes {
+  return Bytes.fromByteArray(concat(registryId, i32ToBytes(index)));
 }
 
-export function pathNamespaceIndexId(pathId: string, index: i32): string {
-  return pathId.concat("-").concat(index.toString());
+export function pathNamespaceIndexId(pathId: Bytes, index: i32): Bytes {
+  return Bytes.fromByteArray(concat(pathId, i32ToBytes(index)));
 }
 
-export function namespaceId(registryId: string, baseNamehash: Bytes): string {
-  return registryId.concat("-").concat(baseNamehash.toHexString());
+export function namespaceId(registryId: Bytes, baseNamehash: Bytes): Bytes {
+  return Bytes.fromByteArray(concat(registryId, baseNamehash));
 }
 
 export function namespaceLinkId(
-  parentRegistryId: string,
+  parentRegistryId: Bytes,
   parentSlotId: BigInt,
-  childAddress: string
-): string {
-  return parentRegistryId
-    .concat("-")
-    .concat(parentSlotId.toString())
-    .concat("-")
-    .concat(childAddress);
+  childAddress: Bytes
+): Bytes {
+  return Bytes.fromByteArray(
+    concat(
+      concat(parentRegistryId, uint256ToByteArray(parentSlotId)),
+      childAddress
+    )
+  );
 }
 
 // ENSv2NamePath.id = namehash hex (schema's own ID comment), computed the

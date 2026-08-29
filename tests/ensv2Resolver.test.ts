@@ -13,6 +13,7 @@ import {
   handleNamedDataResource,
   handleNamedResource,
   handleNamedTextResource,
+  namehashFromDnsEncoded,
 } from "../src/ensv2Resolver";
 import { createResolverID, handleAddrChanged } from "../src/resolver";
 import {
@@ -254,11 +255,25 @@ afterEach(() => {
   clearStore();
 });
 
+// assert.fieldEquals compares an entity's id as its lowercase-hex string
+// form regardless of the underlying GraphQL type (fix plan Phase 5).
+// Production code now builds these ids as fixed-width Bytes concatenation
+// with no delimiter (a BigInt component is a 32-byte big-endian value,
+// src/utils.ts::uint256ToByteArray) — these mirror that exact encoding, and
+// hexOf mirrors Bytes.fromUTF8(kindTag).toHexString() for the fixed 4-byte
+// "NAME"/"TEXT"/"DATA"/"ADDR" kind tags.
+function bigIntHex32(i: BigInt): string {
+  return i.toHex().slice(2).padStart(64, "0");
+}
+function hexOf(b: Bytes): string {
+  return b.toHexString().slice(2);
+}
+
 test("AliasChanged set produces ENSv2ResolverAlias, clearing (empty toName) deactivates without deleting", () => {
   let fromName = encodeLabel("alice");
   let toName = encodeLabel("bob");
   let resolverId = Address.fromString(PERMISSIONED_RESOLVER).toHexString();
-  let id = resolverId.concat("-").concat(fromName.toHexString());
+  let id = resolverId.concat(hexOf(namehashFromDnsEncoded(fromName)));
 
   handleAliasChanged(createAliasChangedEvent(fromName, toName));
 
@@ -277,7 +292,7 @@ test("NamedResource produces ENSv2ResolverResource with kind NAME", () => {
   let resource = BigInt.fromI32(1);
   let name = encodeLabel("carol");
   let resolverId = Address.fromString(PERMISSIONED_RESOLVER).toHexString();
-  let id = resolverId.concat("-").concat(resource.toString()).concat("-NAME");
+  let id = resolverId.concat(bigIntHex32(resource)).concat(hexOf(Bytes.fromUTF8("NAME")));
 
   handleNamedResource(createNamedResourceEvent(resource, name));
 
@@ -292,15 +307,13 @@ test("NamedTextResource and NamedDataResource on the same resource with differen
   let dataKeyHash = Bytes.fromI32(2);
   let resolverId = Address.fromString(PERMISSIONED_RESOLVER).toHexString();
   let textId = resolverId
-    .concat("-")
-    .concat(resource.toString())
-    .concat("-TEXT-")
-    .concat(textKeyHash.toHexString());
+    .concat(bigIntHex32(resource))
+    .concat(hexOf(Bytes.fromUTF8("TEXT")))
+    .concat(hexOf(textKeyHash));
   let dataId = resolverId
-    .concat("-")
-    .concat(resource.toString())
-    .concat("-DATA-")
-    .concat(dataKeyHash.toHexString());
+    .concat(bigIntHex32(resource))
+    .concat(hexOf(Bytes.fromUTF8("DATA")))
+    .concat(hexOf(dataKeyHash));
 
   handleNamedTextResource(
     createNamedTextResourceEvent(resource, name, textKeyHash, "avatar")
@@ -322,15 +335,13 @@ test("NamedAddrResource for two coinTypes on the same resource produces two dist
   let ethCoinType = BigInt.fromI32(60);
   let btcCoinType = BigInt.fromI32(0);
   let ethId = resolverId
-    .concat("-")
-    .concat(resource.toString())
-    .concat("-ADDR-")
-    .concat(ethCoinType.toString());
+    .concat(bigIntHex32(resource))
+    .concat(hexOf(Bytes.fromUTF8("ADDR")))
+    .concat(bigIntHex32(ethCoinType));
   let btcId = resolverId
-    .concat("-")
-    .concat(resource.toString())
-    .concat("-ADDR-")
-    .concat(btcCoinType.toString());
+    .concat(bigIntHex32(resource))
+    .concat(hexOf(Bytes.fromUTF8("ADDR")))
+    .concat(bigIntHex32(btcCoinType));
 
   handleNamedAddrResource(
     createNamedAddrResourceEvent(resource, name, ethCoinType)
@@ -346,12 +357,13 @@ test("NamedAddrResource for two coinTypes on the same resource produces two dist
 test("DataChanged produces ENSv2ResolverData with node/key set and value left null", () => {
   let node = Bytes.fromI32(9);
   let resolverId = Address.fromString(PERMISSIONED_RESOLVER).toHexString();
-  let id = resolverId.concat("-").concat(node.toHexString()).concat("-mykey");
+  let keyHash = Bytes.fromByteArray(crypto.keccak256(Bytes.fromUTF8("mykey")));
+  let id = resolverId.concat(hexOf(node)).concat(hexOf(keyHash));
 
   handleDataChanged(createDataChangedEvent(node, "mykey"));
 
   assert.fieldEquals("ENSv2ResolverData", id, "key", "mykey");
-  let entity = ENSv2ResolverData.load(id);
+  let entity = ENSv2ResolverData.load(Bytes.fromHexString(id));
   let entityExists = entity != null;
   assert.assertTrue(entityExists);
   if (entity != null) {

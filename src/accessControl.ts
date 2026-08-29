@@ -9,10 +9,12 @@
 // ENSRegistry/BaseRegistrar but `account` on NameWrapper/PermissionedRegistry.
 // Every call site here takes primitives so the caller unpacks whatever its
 // own event actually calls that field.
-import { Address, ethereum } from "@graphprotocol/graph-ts";
-import { createOrLoadAccount } from "./utils";
+import { Address, Bytes, ethereum } from "@graphprotocol/graph-ts";
+import { concat, createOrLoadAccount } from "./utils";
 import { ContractOwnership, OperatorApproval, RegistrarController } from "./types/schema";
 
+// Fixed-width Bytes concatenation, no delimiter needed: contract/owner/
+// operator/controller are all 20-byte addresses (fix plan Phase 5 Decision 1).
 export function processApprovalForAll(
   contract: Address,
   owner: Address,
@@ -20,14 +22,11 @@ export function processApprovalForAll(
   approved: boolean,
   block: ethereum.Block
 ): void {
-  let ownerAccount = createOrLoadAccount(owner.toHexString());
-  let operatorAccount = createOrLoadAccount(operator.toHexString());
-  let id = contract
-    .toHexString()
-    .concat("-")
-    .concat(ownerAccount.id)
-    .concat("-")
-    .concat(operatorAccount.id);
+  let ownerAccount = createOrLoadAccount(owner);
+  let operatorAccount = createOrLoadAccount(operator);
+  let id = Bytes.fromByteArray(
+    concat(concat(contract, ownerAccount.id), operatorAccount.id)
+  );
 
   let entity = OperatorApproval.load(id);
   if (entity == null) {
@@ -46,8 +45,8 @@ export function processOwnershipTransferred(
   newOwner: Address,
   block: ethereum.Block
 ): void {
-  let ownerAccount = createOrLoadAccount(newOwner.toHexString());
-  let id = contract.toHexString();
+  let ownerAccount = createOrLoadAccount(newOwner);
+  let id = contract;
 
   let entity = ContractOwnership.load(id);
   if (entity == null) {
@@ -65,7 +64,7 @@ export function processControllerStatus(
   active: boolean,
   block: ethereum.Block
 ): void {
-  let id = contract.toHexString().concat("-").concat(controller.toHexString());
+  let id = Bytes.fromByteArray(concat(contract, controller));
 
   let entity = RegistrarController.load(id);
   if (entity == null) {

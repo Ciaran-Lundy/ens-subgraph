@@ -1,4 +1,5 @@
-import { Address, Bytes, ethereum } from "@graphprotocol/graph-ts";
+import { Address, Bytes } from "@graphprotocol/graph-ts";
+import { concat, createEventID } from "./utils";
 
 import {
   ABIChanged as ABIChangedEvent,
@@ -31,20 +32,20 @@ import {
 } from "./types/schema";
 
 export function handleAddrChanged(event: AddrChangedEvent): void {
-  let account = new Account(event.params.a.toHexString());
+  let account = new Account(event.params.a);
   account.save();
 
   let resolver = new Resolver(
     createResolverID(event.params.node, event.address)
   );
-  resolver.domain = event.params.node.toHexString();
+  resolver.domain = event.params.node;
   resolver.address = event.address;
-  resolver.addr = event.params.a.toHexString();
+  resolver.addr = event.params.a;
   resolver.save();
 
-  let domain = Domain.load(event.params.node.toHexString());
-  if (domain && domain.resolver == resolver.id) {
-    domain.resolvedAddress = event.params.a.toHexString();
+  let domain = Domain.load(event.params.node);
+  if (domain && domain.resolver && domain.resolver!.equals(resolver.id)) {
+    domain.resolvedAddress = event.params.a;
     domain.save();
   }
 
@@ -52,7 +53,7 @@ export function handleAddrChanged(event: AddrChangedEvent): void {
   resolverEvent.resolver = resolver.id;
   resolverEvent.blockNumber = event.block.number.toI32();
   resolverEvent.transactionID = event.transaction.hash;
-  resolverEvent.addr = event.params.a.toHexString();
+  resolverEvent.addr = event.params.a;
   resolverEvent.save();
 }
 
@@ -216,8 +217,8 @@ export function handleVersionChanged(event: VersionChangedEvent): void {
   resolverEvent.version = event.params.newVersion;
   resolverEvent.save();
 
-  let domain = Domain.load(event.params.node.toHexString());
-  if (domain && domain.resolver == resolverEvent.resolver) {
+  let domain = Domain.load(event.params.node);
+  if (domain && domain.resolver && domain.resolver!.equals(resolverEvent.resolver)) {
     domain.resolvedAddress = null;
     domain.save();
   }
@@ -239,7 +240,7 @@ function getOrCreateResolver(
   let resolver = Resolver.load(id);
   if (resolver == null) {
     resolver = new Resolver(id);
-    resolver.domain = node.toHexString();
+    resolver.domain = node;
     resolver.address = address;
     if (saveOnNew) {
       resolver.save();
@@ -248,16 +249,8 @@ function getOrCreateResolver(
   return resolver as Resolver;
 }
 
-function createEventID(event: ethereum.Event): string {
-  return event.block.number
-    .toString()
-    .concat("-")
-    .concat(event.logIndex.toString());
-}
-
-export function createResolverID(node: Bytes, resolver: Address): string {
-  return resolver
-    .toHexString()
-    .concat("-")
-    .concat(node.toHexString());
+// Fixed-width concatenation, no delimiter needed: resolver address is
+// always 20 bytes, node is always 32 bytes (fix plan Phase 5 Decision 1).
+export function createResolverID(node: Bytes, resolver: Address): Bytes {
+  return Bytes.fromByteArray(concat(resolver, node));
 }

@@ -12,7 +12,7 @@
 // v1 system, not something to overwrite). wrappedOwner/registrant are
 // different — they're what real consumers read to find "who controls this
 // name" — so those get corrected, domain.owner does not.
-import { BigInt } from "@graphprotocol/graph-ts";
+import { BigInt, Bytes } from "@graphprotocol/graph-ts";
 import { checkValidLabel } from "./utils";
 import { getEthRegistryAddress, getV2GracePeriod } from "./ensv2Constants";
 import { pathNamehash, registryNamespaceIndexId } from "./ensv2Utils";
@@ -33,7 +33,7 @@ import { LabelRegistered } from "./types/RootRegistry/PermissionedRegistry";
 // Read-only mirror of materializePathsForSlot's namespace loop; ENSv2NameSlot
 // deliberately has no direct Domain/namehash field of its own, only
 // labelhash, so this has to be recomputed rather than stored.
-export function getEthDomainId(slot: ENSv2NameSlot): string | null {
+export function getEthDomainId(slot: ENSv2NameSlot): Bytes | null {
   let registry = ENSv2Registry.load(slot.registry);
   if (registry == null) {
     return null;
@@ -49,10 +49,12 @@ export function getEthDomainId(slot: ENSv2NameSlot): string | null {
     if (namespace == null || !namespace.active) {
       continue;
     }
-    let pathId = pathNamehash(namespace.baseNamehash, slot.labelhash).toHexString();
+    let pathId = pathNamehash(namespace.baseNamehash, slot.labelhash);
     let path = ENSv2NamePath.load(pathId);
-    if (path != null && path.domain !== null) {
-      return path.domain as string;
+    // Nullable-Bytes truthy check, not `!== null` (docs/plan.md's
+    // AssemblyScript compiler gotcha, fix plan Phase 5).
+    if (path != null && path.domain) {
+      return path.domain!;
     }
   }
   return null;
@@ -65,9 +67,9 @@ export function getEthDomainId(slot: ENSv2NameSlot): string | null {
 // Re-checks WrappedDomain existence fresh every call rather than caching the
 // original classification.
 export function correctMigratedLegacyOwner(
-  domainId: string,
-  registrationId: string,
-  ownerId: string
+  domainId: Bytes,
+  registrationId: Bytes,
+  ownerId: Bytes
 ): void {
   let wrappedDomain = WrappedDomain.load(domainId);
   if (wrappedDomain != null) {
@@ -98,7 +100,7 @@ function syncEthRegistration(
   event: LabelRegistered,
   isV1Migration: boolean
 ): void {
-  let id = slot.labelhash.toHexString();
+  let id = slot.labelhash;
   let registration = Registration.load(id);
   if (registration == null) {
     registration = new Registration(id);
@@ -106,16 +108,16 @@ function syncEthRegistration(
   }
   registration.domain = path.id;
   let slotExpiryDate = slot.expiryDate;
-  if (slotExpiryDate !== null) {
-    registration.expiryDate = slotExpiryDate as BigInt;
+  if (slotExpiryDate) {
+    registration.expiryDate = slotExpiryDate!;
   }
   // Migrated names: registrant correction (if any) is entirely
   // correctMigratedLegacyOwner's job (branch-aware — wrapped names must NOT
   // get registrant overwritten here).
   if (!isV1Migration) {
     let registrantId = slot.registrant;
-    if (registrantId !== null) {
-      registration.registrant = registrantId as string;
+    if (registrantId) {
+      registration.registrant = registrantId!;
     }
   }
   if (checkValidLabel(slot.label)) {
@@ -131,7 +133,7 @@ export function projectPathToDomain(
   isV1Migration: boolean
 ): void {
   let ownerId = slot.owner;
-  if (ownerId == null) {
+  if (!ownerId) {
     // Phase 2's handleLabelRegistered always sets slot.owner before this
     // runs — defensive only, should never actually trigger.
     return;
@@ -152,33 +154,33 @@ export function projectPathToDomain(
   // Migrated names: domain.owner is never touched (see file header) — it
   // stays whatever the v1 graveyard-voiding step already set it to.
   if (!isV1Migration) {
-    domain.owner = ownerId as string;
+    domain.owner = ownerId!;
   }
   // Migrated names: registrant correction is correctMigratedLegacyOwner's
   // job below (branch-aware), not this generic assignment.
   if (!isV1Migration) {
     let registrantId = slot.registrant;
-    if (registrantId !== null) {
-      domain.registrant = registrantId as string;
+    if (registrantId) {
+      domain.registrant = registrantId!;
     }
   }
   domain.isMigrated = true;
 
   let parentPathId = path.parent;
-  if (parentPathId !== null) {
-    let parentPath = ENSv2NamePath.load(parentPathId as string);
-    if (parentPath != null && parentPath.domain !== null) {
-      domain.parent = parentPath.domain as string;
+  if (parentPathId) {
+    let parentPath = ENSv2NamePath.load(parentPathId!);
+    if (parentPath != null && parentPath.domain) {
+      domain.parent = parentPath.domain!;
     }
   }
 
   // v2GracePeriod is ETHRegistrar/ETHRenewerV1-specific policy — only
   // applied for real .eth registrations, where Domain.expiryDate has always
   // meant the true reregistration-availability date, not raw expiry.
-  let isEth = slot.registry == getEthRegistryAddress().toHexString();
+  let isEth = slot.registry.equals(getEthRegistryAddress());
   let slotExpiryDate = slot.expiryDate;
-  if (isEth && slotExpiryDate !== null) {
-    domain.expiryDate = (slotExpiryDate as BigInt).plus(getV2GracePeriod());
+  if (isEth && slotExpiryDate) {
+    domain.expiryDate = slotExpiryDate!.plus(getV2GracePeriod());
   } else {
     domain.expiryDate = slotExpiryDate;
   }
@@ -190,11 +192,7 @@ export function projectPathToDomain(
   if (isEth) {
     syncEthRegistration(slot, path, event, isV1Migration);
     if (isV1Migration) {
-      correctMigratedLegacyOwner(
-        domain.id,
-        slot.labelhash.toHexString(),
-        ownerId as string
-      );
+      correctMigratedLegacyOwner(domain.id, slot.labelhash, ownerId!);
     }
   }
 }

@@ -14,7 +14,7 @@
 // and resource records are ENSv2-only surfaces, never a substitute for a
 // real registry path (docs/plan.md's explicit non-goal).
 import { Address, BigInt, Bytes, crypto, ethereum } from "@graphprotocol/graph-ts";
-import { concat } from "./utils";
+import { concat, ROOT_NODE, uint256ToByteArray } from "./utils";
 import { decodeName } from "./nameWrapper";
 import { processEACRolesChanged } from "./ensv2Roles";
 import { ENSv2Resolver, ENSv2ResolverAlias, ENSv2ResolverData, ENSv2ResolverResource } from "./types/schema";
@@ -27,10 +27,6 @@ import {
   NamedResource,
   NamedTextResource,
 } from "./types/PermissionedResolver/PermissionedResolver";
-
-const ROOT_NODE_BYTES = Bytes.fromHexString(
-  "0x0000000000000000000000000000000000000000000000000000000000000000"
-);
 
 // decodeName only recovers the first label + a dotted human-readable string
 // (nameWrapper.ts was never built to compute a namehash). AliasChanged/
@@ -53,7 +49,7 @@ export function namehashFromDnsEncoded(buf: Bytes): Bytes {
     len = buf[offset++];
   }
 
-  let node = ROOT_NODE_BYTES;
+  let node: Bytes = ROOT_NODE;
   for (let i = labels.length - 1; i >= 0; i--) {
     let labelHash = Bytes.fromByteArray(crypto.keccak256(labels[i]));
     node = Bytes.fromByteArray(crypto.keccak256(concat(node, labelHash)));
@@ -62,7 +58,7 @@ export function namehashFromDnsEncoded(buf: Bytes): Bytes {
 }
 
 function getOrCreateResolver(address: Address): ENSv2Resolver {
-  let id = address.toHexString();
+  let id: Bytes = address;
   let resolver = ENSv2Resolver.load(id);
   if (resolver == null) {
     resolver = new ENSv2Resolver(id);
@@ -82,7 +78,12 @@ function decodedNameOf(buf: Bytes): string | null {
 
 export function handleAliasChanged(event: AliasChanged): void {
   let resolver = getOrCreateResolver(event.address);
-  let id = resolver.id.concat("-").concat(event.params.fromName.toHexString());
+  // fromName is DNS-wire-encoded, arbitrary length — not safe to
+  // concatenate raw (fix plan Phase 5 Decision 1/2). Use its namehash
+  // instead (already computed below as fromNode, a fixed 32-byte hash) —
+  // more meaningful as an id component than the raw bytes anyway.
+  let fromNode = namehashFromDnsEncoded(event.params.fromName);
+  let id = Bytes.fromByteArray(concat(resolver.id, fromNode));
 
   let alias = ENSv2ResolverAlias.load(id);
   if (alias == null) {
@@ -90,7 +91,7 @@ export function handleAliasChanged(event: AliasChanged): void {
     alias.resolver = resolver.id;
   }
   alias.fromName = event.params.fromName;
-  alias.fromNode = namehashFromDnsEncoded(event.params.fromName);
+  alias.fromNode = fromNode;
   alias.fromNameDecoded = decodedNameOf(event.params.fromName);
 
   // Empty toName is the clearing signal — not explicit in the proposal, but
@@ -113,9 +114,14 @@ export function handleAliasChanged(event: AliasChanged): void {
   alias.save();
 }
 
+// idSuffix is a fixed-width Bytes tag distinguishing kind + any extra key
+// material (fix plan Phase 5 Decision 1) — see each caller below for how
+// it's built. Concatenated after a 32-byte resource, no delimiter needed:
+// NAME's suffix (4 bytes) can never collide with TEXT/DATA/ADDR's (36
+// bytes, and each starts with its own distinct 4-byte kind tag).
 function saveNamedResource(
   resolver: ENSv2Resolver,
-  idSuffix: string,
+  idSuffix: Bytes,
   resource: BigInt,
   name: Bytes,
   kind: string,
@@ -124,7 +130,9 @@ function saveNamedResource(
   coinType: BigInt | null,
   event: ethereum.Event
 ): void {
-  let id = resolver.id.concat("-").concat(resource.toString()).concat("-").concat(idSuffix);
+  let id = Bytes.fromByteArray(
+    concat(concat(resolver.id, uint256ToByteArray(resource)), idSuffix)
+  );
   let entity = ENSv2ResolverResource.load(id);
   if (entity == null) {
     entity = new ENSv2ResolverResource(id);
@@ -155,7 +163,7 @@ export function handleNamedResource(event: NamedResource): void {
   let resolver = getOrCreateResolver(event.address);
   saveNamedResource(
     resolver,
-    "NAME",
+    Bytes.fromUTF8("NAME"),
     event.params.resource,
     event.params.name,
     "NAME",
@@ -180,7 +188,9 @@ function handleNamedKeyedResource(
   event: ethereum.Event
 ): void {
   let resolver = getOrCreateResolver(resolverAddress);
-  let idSuffix = kind.concat("-").concat(keyHash.toHexString());
+  // kind is always exactly 4 ASCII chars ("TEXT"/"DATA"), keyHash always 32
+  // bytes — fixed-width, no delimiter needed.
+  let idSuffix = Bytes.fromByteArray(concat(Bytes.fromUTF8(kind), keyHash));
   saveNamedResource(
     resolver,
     idSuffix,
@@ -220,7 +230,10 @@ export function handleNamedDataResource(event: NamedDataResource): void {
 
 export function handleNamedAddrResource(event: NamedAddrResource): void {
   let resolver = getOrCreateResolver(event.address);
-  let idSuffix = "ADDR-".concat(event.params.coinType.toString());
+  // "ADDR" (4 bytes) + coinType as a 32-byte big-endian value — fixed-width.
+  let idSuffix = Bytes.fromByteArray(
+    concat(Bytes.fromUTF8("ADDR"), uint256ToByteArray(event.params.coinType))
+  );
   saveNamedResource(
     resolver,
     idSuffix,
@@ -236,11 +249,13 @@ export function handleNamedAddrResource(event: NamedAddrResource): void {
 
 export function handleDataChanged(event: DataChanged): void {
   let resolver = getOrCreateResolver(event.address);
-  let id = resolver.id
-    .concat("-")
-    .concat(event.params.node.toHexString())
-    .concat("-")
-    .concat(event.params.key);
+  // key is arbitrary-length user-supplied text, not safe to concatenate raw
+  // (fix plan Phase 5 Decision 2) — hash it first, same as its sibling
+  // TEXT/DATA resource ids already do via the ABI's own keyHash param.
+  let keyHash = Bytes.fromByteArray(crypto.keccak256(Bytes.fromUTF8(event.params.key)));
+  let id = Bytes.fromByteArray(
+    concat(concat(resolver.id, event.params.node), keyHash)
+  );
 
   let data = ENSv2ResolverData.load(id);
   if (data == null) {

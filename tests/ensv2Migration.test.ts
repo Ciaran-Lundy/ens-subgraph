@@ -346,19 +346,19 @@ test("unwrapped migration corrects registrant only, never owner, and a post-migr
   let registrationId = labelHash.toHexString();
 
   // Pre-seed legacy state as if this were a real pre-migration ENSv1 name.
-  let domain = new Domain(domainId);
-  domain.owner = GRAVEYARD;
-  domain.registrant = GRAVEYARD;
+  let domain = new Domain(Bytes.fromHexString(domainId));
+  domain.owner = Bytes.fromHexString(GRAVEYARD);
+  domain.registrant = Bytes.fromHexString(GRAVEYARD);
   domain.isMigrated = true;
   domain.subdomainCount = 0;
   domain.createdAt = BigInt.fromI32(0);
   domain.save();
 
-  let registration = new Registration(registrationId);
-  registration.domain = domainId;
+  let registration = new Registration(Bytes.fromHexString(registrationId));
+  registration.domain = Bytes.fromHexString(domainId);
   registration.registrationDate = BigInt.fromI32(0);
   registration.expiryDate = BigInt.fromI32(1000000000);
-  registration.registrant = GRAVEYARD;
+  registration.registrant = Bytes.fromHexString(GRAVEYARD);
   registration.save();
 
   let tokenId = slotToken(1);
@@ -374,9 +374,9 @@ test("unwrapped migration corrects registrant only, never owner, and a post-migr
   );
 
   let slotId = nameSlotId(
-    Address.fromString(ETH_REGISTRY).toHexString(),
+    Address.fromString(ETH_REGISTRY),
     toSlotId(tokenId)
-  );
+  ).toHexString();
   assert.fieldEquals("ENSv2NameSlot", slotId, "migratedFromV1", "true");
 
   assert.fieldEquals(
@@ -425,19 +425,19 @@ test("wrapped-unlocked migration (no WrappedDomain) behaves the same as unwrappe
   let domainId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
   let registrationId = labelHash.toHexString();
 
-  let domain = new Domain(domainId);
-  domain.owner = GRAVEYARD;
-  domain.registrant = GRAVEYARD;
+  let domain = new Domain(Bytes.fromHexString(domainId));
+  domain.owner = Bytes.fromHexString(GRAVEYARD);
+  domain.registrant = Bytes.fromHexString(GRAVEYARD);
   domain.isMigrated = true;
   domain.subdomainCount = 0;
   domain.createdAt = BigInt.fromI32(0);
   domain.save();
 
-  let registration = new Registration(registrationId);
-  registration.domain = domainId;
+  let registration = new Registration(Bytes.fromHexString(registrationId));
+  registration.domain = Bytes.fromHexString(domainId);
   registration.registrationDate = BigInt.fromI32(0);
   registration.expiryDate = BigInt.fromI32(1000000000);
-  registration.registrant = GRAVEYARD;
+  registration.registrant = Bytes.fromHexString(GRAVEYARD);
   registration.save();
   // No WrappedDomain row — already unwrapped earlier in the same tx.
 
@@ -476,27 +476,27 @@ test("wrapped-locked migration corrects wrappedOwner only, leaves registrant/own
   let domainId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
   let registrationId = labelHash.toHexString();
 
-  let domain = new Domain(domainId);
-  domain.owner = GRAVEYARD;
-  domain.registrant = GRAVEYARD;
-  domain.wrappedOwner = GRAVEYARD;
+  let domain = new Domain(Bytes.fromHexString(domainId));
+  domain.owner = Bytes.fromHexString(GRAVEYARD);
+  domain.registrant = Bytes.fromHexString(GRAVEYARD);
+  domain.wrappedOwner = Bytes.fromHexString(GRAVEYARD);
   domain.isMigrated = true;
   domain.subdomainCount = 0;
   domain.createdAt = BigInt.fromI32(0);
   domain.save();
 
-  let registration = new Registration(registrationId);
-  registration.domain = domainId;
+  let registration = new Registration(Bytes.fromHexString(registrationId));
+  registration.domain = Bytes.fromHexString(domainId);
   registration.registrationDate = BigInt.fromI32(0);
   registration.expiryDate = BigInt.fromI32(1000000000);
-  registration.registrant = GRAVEYARD;
+  registration.registrant = Bytes.fromHexString(GRAVEYARD);
   registration.save();
 
-  let wrappedDomain = new WrappedDomain(domainId);
-  wrappedDomain.domain = domainId;
+  let wrappedDomain = new WrappedDomain(Bytes.fromHexString(domainId));
+  wrappedDomain.domain = Bytes.fromHexString(domainId);
   wrappedDomain.expiryDate = BigInt.fromI32(1000000000);
   wrappedDomain.fuses = 65536; // PARENT_CANNOT_CONTROL — "locked"
-  wrappedDomain.owner = GRAVEYARD;
+  wrappedDomain.owner = Bytes.fromHexString(GRAVEYARD);
   wrappedDomain.save();
 
   let tokenId = slotToken(3);
@@ -567,9 +567,9 @@ test("a non-migration registration is not flagged", () => {
   );
 
   let slotId = nameSlotId(
-    Address.fromString(ETH_REGISTRY).toHexString(),
+    Address.fromString(ETH_REGISTRY),
     toSlotId(tokenId)
-  );
+  ).toHexString();
   assert.fieldEquals("ENSv2NameSlot", slotId, "migratedFromV1", "false");
 });
 
@@ -606,19 +606,19 @@ test("handleExpiryUpdated on a RESERVED slot leaves legacy fields provably uncha
   // Pre-seed Domain/Registration with a known expiry, as ETHRenewerV1's own
   // v1-authoritative path would have already set correctly — this must
   // survive untouched.
-  let domain = new Domain(domainId);
-  domain.owner = OWNER;
+  let domain = new Domain(Bytes.fromHexString(domainId));
+  domain.owner = Bytes.fromHexString(OWNER);
   domain.isMigrated = true;
   domain.subdomainCount = 0;
   domain.createdAt = BigInt.fromI32(0);
   domain.expiryDate = BigInt.fromI32(1500000000);
   domain.save();
 
-  let registration = new Registration(registrationId);
-  registration.domain = domainId;
+  let registration = new Registration(Bytes.fromHexString(registrationId));
+  registration.domain = Bytes.fromHexString(domainId);
   registration.registrationDate = BigInt.fromI32(0);
   registration.expiryDate = BigInt.fromI32(1400000000);
-  registration.registrant = OWNER;
+  registration.registrant = Bytes.fromHexString(OWNER);
   registration.save();
 
   handleLabelReserved(
