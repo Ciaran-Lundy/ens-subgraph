@@ -65,23 +65,23 @@
       "startBlock": 8579988
     },
     "RootRegistry": {
-      "address": "0xc960F7217d3643B525Ef36Bec8Adf86953CD9aB8",
-      "startBlock": 11465480
+      "address": "0x8115186e8f2e0B0281E86Ab91f0f48Ba90364354",
+      "startBlock": 11383818
     },
     "ETHRegistry": {
-      "address": "0xDEDB92913A25abE1f7BCDD85D8A344a43B398B67",
-      "startBlock": 11465480
+      "address": "0xbDC85dD5b15D7ECb354Cd7cb6f2C50B4f2C4f0e2",
+      "startBlock": 11383897
     },
     "ETHRegistrar": {
-      "address": "0x8c2E866B439358c41AE05De9cbE8A00BFEFafFcA",
-      "startBlock": 11479218
+      "address": "0xa88553F454b77203b0D036a05C894d555EAaA2cc",
+      "startBlock": 11383914
     },
     "VerifiableFactory": {
-      "address": "0xD2a632D8a8b67c2c4398c255CbD7aF8dd7236198",
-      "startBlock": 11465480
+      "address": "0x10dc6333CDFE1fCEf624c6e0A8221B91804cD7EF",
+      "startBlock": 11383823
     },
     "PermissionedResolver": {
-      "startBlock": 11465480
+      "startBlock": 11383901
     }
   },
   "holesky": {

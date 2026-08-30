@@ -6,8 +6,8 @@ export function getMigrationControllers(): Address[] {
   let network = dataSource.network();
   if (network == "sepolia") {
     return [
-      Address.fromString("0xF91c34ED840889Ed96F806f882fD50506A336Edb"), // LockedMigrationController
-      Address.fromString("0x056138Ef5660F7113a3B0ADC08ac3683310e7FBC"), // UnlockedMigrationController
+      Address.fromString("0x5c39e36A69a9897f08954C71acB1f36e0bD4f409"), // LockedMigrationController
+      Address.fromString("0x2fCf83232B93bd29C59db18AAa1d4b62E9F9fc73"), // UnlockedMigrationController
     ];
   }
   return [];
@@ -47,7 +47,7 @@ export function getV2GracePeriod(): BigInt {
 export function getRootRegistryAddress(): Address {
   let network = dataSource.network();
   if (network == "sepolia") {
-    return Address.fromString("0xc960F7217d3643B525Ef36Bec8Adf86953CD9aB8");
+    return Address.fromString("0x8115186e8f2e0B0281E86Ab91f0f48Ba90364354");
   }
   return Address.zero();
 }
@@ -55,7 +55,7 @@ export function getRootRegistryAddress(): Address {
 export function getEthRegistryAddress(): Address {
   let network = dataSource.network();
   if (network == "sepolia") {
-    return Address.fromString("0xDEDB92913A25abE1f7BCDD85D8A344a43B398B67");
+    return Address.fromString("0xbDC85dD5b15D7ECb354Cd7cb6f2C50B4f2C4f0e2");
   }
   return Address.zero();
 }
