@@ -417,6 +417,41 @@ test("unwrapped migration corrects registrant only, never owner, and a post-migr
   assert.fieldEquals("Domain", domainId, "owner", GRAVEYARD);
 });
 
+test("migration-flagged registration with no pre-existing v1 Domain row sets owner instead of crashing", () => {
+  // Regression test for the Sepolia indexing failure at block #11480885:
+  // Domain#save on "missing value for non-nullable field `owner`" when a
+  // migration-controller-sent LabelRegistered materialised into a namespace
+  // with no pre-existing ENSv1 Domain row to inherit a graveyard owner from.
+  dataSourceMock.setNetwork("sepolia");
+  let ethBaseNamehash = setupEthNamespace();
+
+  let labelHash = Bytes.fromI32(555);
+  let domainId = pathNamehash(ethBaseNamehash, labelHash).toHexString();
+
+  // Deliberately no pre-seeded Domain/Registration row — unlike the other
+  // migration tests, there is no ENSv1 legacy state to inherit from.
+  assert.notInStore("Domain", domainId);
+
+  let tokenId = slotToken(2);
+  handleLabelRegistered(
+    createLabelRegisteredEvent(
+      ETH_REGISTRY,
+      tokenId,
+      labelHash,
+      "freshmigrated",
+      OWNER,
+      LOCKED_MIGRATION_CONTROLLER
+    )
+  );
+
+  assert.fieldEquals(
+    "Domain",
+    domainId,
+    "owner",
+    Address.fromString(OWNER).toHexString()
+  );
+});
+
 test("wrapped-unlocked migration (no WrappedDomain) behaves the same as unwrapped", () => {
   dataSourceMock.setNetwork("sepolia");
   let ethBaseNamehash = setupEthNamespace();

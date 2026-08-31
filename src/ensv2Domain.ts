@@ -102,6 +102,7 @@ function syncEthRegistration(
 ): void {
   let id = slot.labelhash;
   let registration = Registration.load(id);
+  let isNewRegistration = registration == null;
   if (registration == null) {
     registration = new Registration(id);
     registration.registrationDate = event.block.timestamp;
@@ -113,8 +114,12 @@ function syncEthRegistration(
   }
   // Migrated names: registrant correction (if any) is entirely
   // correctMigratedLegacyOwner's job (branch-aware — wrapped names must NOT
-  // get registrant overwritten here).
-  if (!isV1Migration) {
+  // get registrant overwritten here) — UNLESS this is a brand-new row with
+  // no pre-existing v1 legacy value for correctMigratedLegacyOwner to find
+  // and correct; registrant is non-nullable, so it must be set here instead
+  // (same fix as projectPathToDomain's isNewDomain case, and for the same
+  // Sepolia block #11480885 crash).
+  if (!isV1Migration || isNewRegistration) {
     let registrantId = slot.registrant;
     if (registrantId) {
       registration.registrant = registrantId!;
@@ -140,6 +145,7 @@ export function projectPathToDomain(
   }
 
   let domain = Domain.load(path.id);
+  let isNewDomain = domain == null;
   if (domain == null) {
     domain = new Domain(path.id);
     domain.createdAt = event.block.timestamp;
@@ -151,9 +157,14 @@ export function projectPathToDomain(
     domain.labelName = path.label;
   }
   domain.labelhash = path.labelhash;
-  // Migrated names: domain.owner is never touched (see file header) — it
-  // stays whatever the v1 graveyard-voiding step already set it to.
-  if (!isV1Migration) {
+  // Migrated names: domain.owner is left untouched ONLY when a pre-existing
+  // row is already carrying the v1 graveyard-voided value (see file header).
+  // A brand-new row (no prior ENSv1 Domain ever existed for this path) has
+  // no such legacy value to protect — owner is non-nullable, so it must be
+  // set here or Domain#save fails (seen on Sepolia: block #11480885 crashed
+  // indexing when a migration-flagged registration materialised into a
+  // namespace with no pre-existing v1 Domain).
+  if (!isV1Migration || isNewDomain) {
     domain.owner = ownerId!;
   }
   // Migrated names: registrant correction is correctMigratedLegacyOwner's
