@@ -101,11 +101,18 @@ export function getOrCreateRootNamespace(
 // implementation address(es) (UserRegistryImpl/WrapperRegistryImpl), which
 // aren't confirmed yet for this deployment (docs/plan.md — new prerequisite,
 // same caveat as the migration controller addresses). Templating every
-// ProxyDeployed unconditionally is harmless: a resolver proxy never emits
-// PermissionedRegistry-shaped events, so no bogus entities get created —
-// it only costs graph-node one extra inert watched address per resolver
-// deployment. Newly-discovered registries get kind = UNKNOWN (not a guessed
-// USER) until real implementation addresses allow precise classification.
+// ProxyDeployed unconditionally is coincidentally safe today, not
+// structurally safe: it does create a real ENSv2Registry row (kind =
+// UNKNOWN) for every resolver deployment too, since getOrCreateRegistry
+// below has no registry-vs-resolver check either — it's just that nothing
+// currently queries or acts on those bogus UNKNOWN rows, and a resolver
+// proxy never emits PermissionedRegistry-shaped events, so no *further*
+// state gets corrupted from them. The moment anything relies on
+// ENSv2Registry rows meaning "a real registry," this needs the same
+// implementation-address classification fix as kindForAddress above (see
+// docs/combined-findings-and-remediation-plan.md findings 33/36). Until
+// then this just costs graph-node one extra inert watched address plus one
+// harmless-but-wrong entity row per resolver deployment.
 export function handleProxyDeployed(event: ProxyDeployed): void {
   ENSv2RegistryTemplate.create(event.params.proxyAddress);
   getOrCreateRegistry(

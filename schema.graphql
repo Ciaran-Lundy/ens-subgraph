@@ -771,6 +771,13 @@ type ENSv2ResolverData @entity(immutable: false) {
   resolver: ENSv2Resolver!
   node: Bytes!
   key: String!
+  # Always null, permanently: DataChanged's real signature only logs the
+  # data's keccak256 hash as an indexed topic (indexedData), never the raw
+  # bytes — there is no event this handler could ever populate this field
+  # from. Not a gap to fix; kept only so a future ABI/event change that
+  # does carry the raw value has somewhere to write it (see
+  # src/ensv2Resolver.ts::handleDataChanged and
+  # docs/combined-findings-and-remediation-plan.md finding 38).
   value: Bytes
   blockNumber: BigInt!
   transactionID: Bytes!

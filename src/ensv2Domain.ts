@@ -12,7 +12,7 @@
 // v1 system, not something to overwrite). wrappedOwner/registrant are
 // different — they're what real consumers read to find "who controls this
 // name" — so those get corrected, domain.owner does not.
-import { BigInt, Bytes } from "@graphprotocol/graph-ts";
+import { BigInt, Bytes, log } from "@graphprotocol/graph-ts";
 import { checkValidLabel } from "./utils";
 import { getEthRegistryAddress, getV2GracePeriod } from "./ensv2Constants";
 import { pathNamehash, registryNamespaceIndexId } from "./ensv2Utils";
@@ -141,6 +141,10 @@ export function projectPathToDomain(
   if (!ownerId) {
     // Phase 2's handleLabelRegistered always sets slot.owner before this
     // runs — defensive only, should never actually trigger.
+    log.warning(
+      "projectPathToDomain: slot {} has no owner, skipping projection",
+      [slot.id.toHexString()]
+    );
     return;
   }
 

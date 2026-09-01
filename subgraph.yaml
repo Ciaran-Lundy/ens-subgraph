@@ -289,6 +289,14 @@ dataSources:
   # is kept for consistency — a subgraph can't mix networks). Real target
   # network is Sepolia via `yarn deploy:sepolia`, which swaps
   # address/network from networks.json's `sepolia` block.
+  #
+  # WARNING: running the plain `yarn deploy` script (network: mainnet, no
+  # --network override) against this manifest as committed will silently
+  # create a mainnet deployment for the 4 ENSv2 sources below using
+  # addresses that are Sepolia-only contracts, not real mainnet ENSv2
+  # contracts (none exist yet). Always use `yarn deploy:sepolia` for this
+  # subgraph until a real mainnet ENSv2 deployment exists and networks.json
+  # gets a mainnet block for these 4 sources.
   # ---------------------------------------------------------------------
 
   - kind: ethereum/contract

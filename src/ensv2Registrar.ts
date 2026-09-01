@@ -11,6 +11,7 @@
 // other event, so it doesn't matter which arrives first (docs/plan.md:
 // "correlate by transaction hash plus token ID... do not rely on log
 // order").
+import { log } from "@graphprotocol/graph-ts";
 import { checkValidLabel, createOrLoadAccount } from "./utils";
 import { getEthRegistryAddress } from "./ensv2Constants";
 import { nameSlotId, toSlotId } from "./ensv2Utils";
@@ -57,6 +58,9 @@ export function handleNameRenewed(event: NameRenewed): void {
   // without a prior registration is nonsensical, so never create one here.
   let registration = ENSv2Registration.load(id);
   if (registration == null) {
+    log.warning("handleNameRenewed: no ENSv2Registration for {}, skipping", [
+      id.toHexString(),
+    ]);
     return;
   }
   registration.duration = event.params.duration;
