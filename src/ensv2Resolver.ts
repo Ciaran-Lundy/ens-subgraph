@@ -57,7 +57,9 @@ export function namehashFromDnsEncoded(buf: Bytes): Bytes {
   return node;
 }
 
-function getOrCreateResolver(address: Address): ENSv2Resolver {
+// Exported so ensv2Paths.ts::handleResolverUpdated can share this
+// implementation instead of maintaining its own copy (audit finding 23).
+export function getOrCreateResolver(address: Address): ENSv2Resolver {
   let id: Bytes = address;
   let resolver = ENSv2Resolver.load(id);
   if (resolver == null) {

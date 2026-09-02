@@ -3,6 +3,7 @@ import {
   afterEach,
   assert,
   clearStore,
+  dataSourceMock,
   newMockEvent,
   test,
 } from "matchstick-as/assembly/index";
@@ -110,6 +111,17 @@ const createProxyDeployedEvent = (proxyAddress: string): ProxyDeployed => {
       ethereum.Value.fromAddress(Address.fromString(proxyAddress))
     )
   );
+  // "salt" (the real ABI's 3rd param, between proxyAddress and
+  // implementation) was previously missing here, so event.params.implementation
+  // (generated as a fixed-index accessor, not looked up by name) read past
+  // the end of a 3-element array — latent until audit finding 4 made
+  // handleProxyDeployed the first code to actually read it.
+  event.parameters.push(
+    new ethereum.EventParam(
+      "salt",
+      ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(1))
+    )
+  );
   event.parameters.push(
     new ethereum.EventParam(
       "implementation",
@@ -120,6 +132,7 @@ const createProxyDeployedEvent = (proxyAddress: string): ProxyDeployed => {
 };
 
 afterEach(() => {
+  dataSourceMock.resetValues();
   clearStore();
 });
 
@@ -134,6 +147,7 @@ function bigIntHex32(i: BigInt): string {
 }
 
 test("grant then revoke on the same (contract, resource, account) leaves the assignment at the latest bitmap and two history rows", () => {
+  dataSourceMock.setNetwork("sepolia");
   let resource = BigInt.fromI32(1);
   let assignmentId = Address.fromString(REGISTRY_ADDRESS)
     .toHexString()
@@ -176,6 +190,7 @@ test("grant then revoke on the same (contract, resource, account) leaves the ass
 });
 
 test("a registry-side role event with no matching ENSv2Resource indexes with resourceEntity null", () => {
+  dataSourceMock.setNetwork("sepolia");
   let resource = BigInt.fromI32(2);
   let assignmentId = Address.fromString(REGISTRY_ADDRESS)
     .toHexString()
@@ -201,6 +216,7 @@ test("a registry-side role event with no matching ENSv2Resource indexes with res
 });
 
 test("a resolver-side role event also indexes with resourceEntity null, proving no contract-type branching is needed", () => {
+  dataSourceMock.setNetwork("sepolia");
   let resource = BigInt.fromI32(3);
   let assignmentId = Address.fromString(RESOLVER_ADDRESS)
     .toHexString()
@@ -227,6 +243,7 @@ test("a resolver-side role event also indexes with resourceEntity null, proving 
 });
 
 test("role-event-then-ProxyDeployed and ProxyDeployed-then-role-event produce identical final registry/assignment state", () => {
+  dataSourceMock.setNetwork("sepolia");
   let resource = BigInt.fromI32(4);
   let registryId = Address.fromString(REGISTRY_ADDRESS).toHexString();
   let assignmentId = registryId

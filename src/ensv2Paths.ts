@@ -19,6 +19,7 @@ import { Address, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 
 import { checkValidLabel, createEventID } from "./utils";
 import {
+  appendRegistryNamespaceIndex,
   isZeroAddress,
   nameSlotId,
   namespaceId,
@@ -30,6 +31,7 @@ import {
   toSlotId,
 } from "./ensv2Utils";
 import { getOrCreateRegistry } from "./ensv2Discovery";
+import { getOrCreateResolver } from "./ensv2Resolver";
 import { projectPathToDomain } from "./ensv2Domain";
 import {
   ENSv2NamePath,
@@ -39,7 +41,6 @@ import {
   ENSv2PathNamespaceIndex,
   ENSv2Registry,
   ENSv2RegistryNamespaceIndex,
-  ENSv2Resolver,
   ENSv2ResolverUpdate,
   ENSv2Resource,
   ENSv2SlotPathIndex,
@@ -78,22 +79,6 @@ function appendPathNamespaceIndex(
 
   path.namespaceCount = path.namespaceCount + 1;
   path.save();
-}
-
-function appendRegistryNamespaceIndex(
-  registry: ENSv2Registry,
-  namespace: ENSv2Namespace
-): void {
-  let index = new ENSv2RegistryNamespaceIndex(
-    registryNamespaceIndexId(registry.id, registry.namespaceCount)
-  );
-  index.registry = registry.id;
-  index.index = registry.namespaceCount;
-  index.namespace = namespace.id;
-  index.save();
-
-  registry.namespaceCount = registry.namespaceCount + 1;
-  registry.save();
 }
 
 // Idempotent: sets active = true whether creating or reactivating. Caller
@@ -183,6 +168,16 @@ function upsertNamespaceLink(
     link.childRegistry = childAddress;
   }
   link.parentTokenId = event.params.tokenId;
+  // Was never assigned anywhere (audit finding 16) — the sibling
+  // ENSv2Namespace.parentResource is populated the same way one function
+  // over (createOrReactivateNamespace), using data already in scope here.
+  let parentResourceId = parentSlot.currentResource;
+  if (parentResourceId) {
+    let resourceEntity = ENSv2Resource.load(parentResourceId!);
+    if (resourceEntity != null) {
+      link.parentResource = resourceEntity.resource;
+    }
+  }
   link.active = true;
   link.transactionID = event.transaction.hash;
   link.blockNumber = event.block.number;
@@ -224,6 +219,10 @@ export function handleSubregistryUpdated(event: SubregistryUpdated): void {
   let parentSlotId = toSlotId(event.params.tokenId);
   let parentSlot = ENSv2NameSlot.load(nameSlotId(parentRegistryId, parentSlotId));
   if (parentSlot == null) {
+    log.warning("SubregistryUpdated for unknown slot {} on registry {}", [
+      parentSlotId.toString(),
+      parentRegistryId.toHexString(),
+    ]);
     return;
   }
 
@@ -261,6 +260,16 @@ export function handleSubregistryUpdated(event: SubregistryUpdated): void {
       );
     }
     return;
+  }
+
+  // Direct non-zero-to-non-zero swap (registry A -> registry B, no
+  // intervening clear-to-zero) — setSubregistry has no on-chain requirement
+  // to pass through zero first, so this is reachable, not hypothetical.
+  // Without this, namespaces from the superseded registry A stay
+  // active:true forever and can resurface if A later gets its own
+  // registrations (audit finding 6).
+  if (previousChildAddress && !previousChildAddress!.equals(event.params.subregistry)) {
+    deactivateNamespacesFromParentSlot(parentSlot, previousChildAddress!, event.block);
   }
 
   let childRegistry = getOrCreateRegistry(
@@ -404,12 +413,9 @@ export function handleResolverUpdated(event: ResolverUpdated): void {
     slot.resolver = null;
   } else {
     slot.resolverAddress = event.params.resolver;
-    let resolverEntity = ENSv2Resolver.load(event.params.resolver);
-    if (resolverEntity == null) {
-      resolverEntity = new ENSv2Resolver(event.params.resolver);
-      resolverEntity.address = event.params.resolver;
-      resolverEntity.save();
-    }
+    // Shared with ensv2Resolver.ts's own get-or-create instead of
+    // maintaining a second copy here (audit finding 23).
+    let resolverEntity = getOrCreateResolver(event.params.resolver);
     slot.resolver = resolverEntity.id;
   }
   slot.updatedAt = event.block.timestamp;
@@ -436,11 +442,26 @@ export function handleParentUpdated(event: ParentUpdated): void {
   let registryId = event.address;
   let registry = ENSv2Registry.load(registryId);
   if (registry == null) {
+    // Unreachable through the current call graph: this function's only
+    // caller (ensv2Registry.ts's wrapper) always calls bootstrapRegistry()
+    // first, which unconditionally creates this exact row. Kept as a guard
+    // rather than an assertion in case that invariant is ever broken by a
+    // future refactor (audit finding 25) — if this ever actually logs,
+    // that invariant has broken and needs investigating.
+    log.warning("ParentUpdated for unknown registry {}", [
+      registryId.toHexString(),
+    ]);
     return;
   }
 
   if (isZeroAddress(event.params.parent)) {
     registry.canonicalParentRegistry = null;
+    // Cleared explicitly, not via checkValidLabel("") below — an empty
+    // string trivially passes that check, so relying on it here would
+    // leave canonicalParentLabel as "" while canonicalParentRegistry is
+    // null, two different answers to "does this have a parent" for the
+    // same event (audit finding 20).
+    registry.canonicalParentLabel = null;
   } else {
     let parentRegistry = getOrCreateRegistry(
       event.params.parent,
@@ -448,9 +469,17 @@ export function handleParentUpdated(event: ParentUpdated): void {
       event.block
     );
     registry.canonicalParentRegistry = parentRegistry.id;
-  }
-  if (checkValidLabel(event.params.label)) {
-    registry.canonicalParentLabel = event.params.label;
+    if (checkValidLabel(event.params.label)) {
+      registry.canonicalParentLabel = event.params.label;
+    } else {
+      // A malformed new label must not leave the OLD parent's label sitting
+      // next to the NEW parent's registry — that mismatch is exactly what
+      // audit finding 20 flagged. Clearing to null (rather than echoing the
+      // still-untrusted raw string back out, which could itself carry the
+      // same unsafe characters checkValidLabel exists to catch) is the safe
+      // choice here.
+      registry.canonicalParentLabel = null;
+    }
   }
   registry.updatedAtBlock = event.block.number;
   registry.save();

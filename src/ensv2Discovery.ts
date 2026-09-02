@@ -4,13 +4,9 @@
 import { Address, Bytes, ethereum } from "@graphprotocol/graph-ts";
 
 import { ROOT_NODE } from "./utils";
-import { namespaceId, registryNamespaceIndexId } from "./ensv2Utils";
+import { appendRegistryNamespaceIndex, namespaceId } from "./ensv2Utils";
 import { getEthRegistryAddress, getRootRegistryAddress } from "./ensv2Constants";
-import {
-  ENSv2Namespace,
-  ENSv2Registry,
-  ENSv2RegistryNamespaceIndex,
-} from "./types/schema";
+import { ENSv2Namespace, ENSv2Registry } from "./types/schema";
 import { ProxyDeployed } from "./types/VerifiableFactory/VerifiableFactory";
 import { ENSv2Registry as ENSv2RegistryTemplate } from "./types/templates";
 
@@ -77,17 +73,10 @@ export function getOrCreateRootNamespace(
     // ENSv2RegistryNamespaceIndex (bounded by namespaceCount), so a counter
     // increment with no matching index row would make this namespace
     // invisible to that loop despite namespaceCount claiming it exists.
+    // Shared with ensv2Paths.ts's equivalent append (audit finding 23) —
+    // see ensv2Utils.ts::appendRegistryNamespaceIndex for why it lives there.
     let registry = ENSv2Registry.load(rootRegistryId)!;
-    let index = new ENSv2RegistryNamespaceIndex(
-      registryNamespaceIndexId(registry.id, registry.namespaceCount)
-    );
-    index.registry = registry.id;
-    index.index = registry.namespaceCount;
-    index.namespace = namespace.id;
-    index.save();
-
-    registry.namespaceCount = registry.namespaceCount + 1;
-    registry.save();
+    appendRegistryNamespaceIndex(registry, namespace);
   }
   return namespace;
 }
@@ -115,9 +104,16 @@ export function getOrCreateRootNamespace(
 // harmless-but-wrong entity row per resolver deployment.
 export function handleProxyDeployed(event: ProxyDeployed): void {
   ENSv2RegistryTemplate.create(event.params.proxyAddress);
-  getOrCreateRegistry(
+  let registry = getOrCreateRegistry(
     event.params.proxyAddress,
     event.params.proxyAddress,
     event.block
   );
+  // Captured even though nothing classifies on it yet (kindForAddress above
+  // is still address-based, pending #33/#34's implementation-address
+  // classification work) — the alternative is discarding the one piece of
+  // on-chain data that would let a future classification fix backfill
+  // already-indexed registries without a full re-index (audit finding 4).
+  registry.implementation = event.params.implementation;
+  registry.save();
 }

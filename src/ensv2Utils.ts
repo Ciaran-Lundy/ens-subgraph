@@ -10,6 +10,11 @@
 // big-endian counter) — so there's no ambiguity despite no separator byte.
 import { Address, BigInt, Bytes, crypto } from "@graphprotocol/graph-ts";
 import { concat, i32ToBytes, uint256ToByteArray } from "./utils";
+import {
+  ENSv2Namespace,
+  ENSv2Registry,
+  ENSv2RegistryNamespaceIndex,
+} from "./types/schema";
 
 // 2^32, used to zero the lower 32 bits of a BigInt without needing
 // BigInt.bitAnd/bitXor (not available in the installed graph-ts 0.31.0).
@@ -83,4 +88,26 @@ export function namespaceLinkId(
 // dependency-free utils file avoids a circular import either way.
 export function pathNamehash(baseNamehash: Bytes, labelhash: Bytes): Bytes {
   return Bytes.fromByteArray(crypto.keccak256(concat(baseNamehash, labelhash)));
+}
+
+// Shared "append index row, bump counter" sequence — used both when a
+// registry's root namespace is bootstrapped (ensv2Discovery.ts) and when a
+// namespace is created/found via a subregistry link (ensv2Paths.ts). Used to
+// be duplicated inline in both call sites (audit finding 23); lives here,
+// not in either of those files, for the same circular-import reason
+// pathNamehash does.
+export function appendRegistryNamespaceIndex(
+  registry: ENSv2Registry,
+  namespace: ENSv2Namespace
+): void {
+  let index = new ENSv2RegistryNamespaceIndex(
+    registryNamespaceIndexId(registry.id, registry.namespaceCount)
+  );
+  index.registry = registry.id;
+  index.index = registry.namespaceCount;
+  index.namespace = namespace.id;
+  index.save();
+
+  registry.namespaceCount = registry.namespaceCount + 1;
+  registry.save();
 }

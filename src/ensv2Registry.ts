@@ -13,7 +13,13 @@
 import { Address, BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 
 import { getOrCreateRegistry, getOrCreateRootNamespace } from "./ensv2Discovery";
-import { nameSlotId, resourceId, toSlotId, tokenEntityId } from "./ensv2Utils";
+import {
+  nameSlotId,
+  resourceId,
+  slotPathIndexId,
+  toSlotId,
+  tokenEntityId,
+} from "./ensv2Utils";
 import {
   checkValidLabel,
   concat,
@@ -26,7 +32,11 @@ import {
   getV2GracePeriod,
   isMigrationController,
 } from "./ensv2Constants";
-import { correctMigratedLegacyOwner, getEthDomainId } from "./ensv2Domain";
+import {
+  correctMigratedLegacyOwner,
+  getEthDomainId,
+  updateEthDomainOwner,
+} from "./ensv2Domain";
 import { processEACRolesChanged } from "./ensv2Roles";
 import { processApprovalForAll } from "./accessControl";
 import {
@@ -40,9 +50,11 @@ import {
   ENSv2LabelRegistered,
   ENSv2LabelRenewed,
   ENSv2LabelUnregistered,
+  ENSv2NamePath,
   ENSv2NameSlot,
   ENSv2Registry,
   ENSv2Resource,
+  ENSv2SlotPathIndex,
   ENSv2Token,
   ENSv2TokenRegenerated,
   ENSv2TokenTransferred,
@@ -86,7 +98,14 @@ export function handleLabelRegistered(event: LabelRegistered): void {
   let id = nameSlotId(registryId, slotId);
 
   let slot = ENSv2NameSlot.load(id);
-  let isReRegistration = slot != null;
+  // Row existence alone isn't "was this previously registered" — a plain
+  // reservation (handleLabelReserved) already creates this row before any
+  // real registration happens, so a reserved-then-first-registered slot was
+  // wrongly counted as a re-registration. The contract itself distinguishes
+  // this exact case (PermissionedRegistry.sol::_register, ROLE_WAS_RESERVED)
+  // — mirror that by checking the PRE-mutation status, not mere row
+  // existence (audit finding 10).
+  let isReRegistration = slot != null && slot.status != "RESERVED";
   if (slot == null) {
     slot = new ENSv2NameSlot(id);
     slot.registry = registryId;
@@ -107,6 +126,19 @@ export function handleLabelRegistered(event: LabelRegistered): void {
   slot.status = "REGISTERED";
   slot.expiryDate = event.params.expiry;
   slot.migratedFromV1 = isV1Migration;
+  // The contract unconditionally reinitializes resolver/subregistry
+  // alongside expiry on every (re-)registration (PermissionedRegistry.sol
+  // ::_register), including to the zero address — which fires no
+  // ResolverUpdated/SubregistryUpdated event. Without resetting here, a
+  // re-registration that doesn't set a resolver/subregistry in the same
+  // call leaves these fields pointing at the PREVIOUS owner's values
+  // indefinitely (audit finding 15). handleResolverUpdated/
+  // handleSubregistryUpdated will overwrite these again later in the same
+  // transaction if the registration call did set them.
+  slot.resolver = null;
+  slot.resolverAddress = null;
+  slot.subregistry = null;
+  slot.subregistryAddress = null;
   slot.updatedAt = event.block.timestamp;
   slot.updatedAtBlock = event.block.number;
   slot.save();
@@ -195,6 +227,31 @@ export function handleLabelUnregistered(event: LabelUnregistered): void {
   slot.updatedAt = event.block.timestamp;
   slot.updatedAtBlock = event.block.number;
   slot.save();
+
+  // Deactivate this slot's own materialised paths (audit finding 7) —
+  // ENSv2NamePath.active was previously never set false anywhere in the
+  // codebase. Bounded by slot.pathCount via the same ENSv2SlotPathIndex
+  // mechanism already used to materialise them (not an unbounded scan).
+  // materializePathsForSlot already reactivates a path on re-registration,
+  // so this and that together give the primary case a coherent lifecycle.
+  // Note: this does not reach paths materialised in a CHILD registry
+  // through a namespace this slot's subregistry served — enumerating those
+  // isn't bounded from a slot-scoped index, so that half is tracked
+  // separately rather than attempted here.
+  for (let i = 0; i < slot.pathCount; i++) {
+    let pathIndex = ENSv2SlotPathIndex.load(slotPathIndexId(slot.id, i));
+    if (pathIndex == null) {
+      continue;
+    }
+    let path = ENSv2NamePath.load(pathIndex.path);
+    if (path == null) {
+      continue;
+    }
+    path.active = false;
+    path.updatedAt = event.block.timestamp;
+    path.updatedAtBlock = event.block.number;
+    path.save();
+  }
 
   let history = new ENSv2LabelUnregistered(createEventID(event));
   history.slot = slot.id;
@@ -299,6 +356,13 @@ export function handleTokenResource(event: TokenResource): void {
   resourceEntity.slot = slot.id;
   resourceEntity.updatedAtBlock = event.block.number;
 
+  // Nullable-Bytes comparison, not `!==`/`!=` (docs/plan.md's AssemblyScript
+  // compiler gotcha): guard with a truthy check, then use .equals() on the
+  // narrowed value. Captured before the token load/create below so the OLD
+  // token id is still available for the deactivation branch that mirrors
+  // the resource deactivation a few lines down (audit finding 13).
+  let previousTokenId = slot.currentToken;
+
   let token = ENSv2Token.load(tokenEntityId(registryId, event.params.tokenId));
   if (token == null) {
     token = new ENSv2Token(tokenEntityId(registryId, event.params.tokenId));
@@ -315,6 +379,24 @@ export function handleTokenResource(event: TokenResource): void {
 
   resourceEntity.currentToken = token.id;
   resourceEntity.save();
+
+  // Mirrors the resource-deactivation branch below: on a re-registration
+  // (PermissionedRegistry.sol::_register burns the old tokenId and mints a
+  // new one), the OLD token was previously left permanently active:true —
+  // the only other writer of ENSv2Token.active = false is
+  // handleTokenRegenerated, a different event that doesn't fire here
+  // (audit finding 13).
+  if (previousTokenId) {
+    let isDifferentToken = !previousTokenId!.equals(token.id);
+    if (isDifferentToken) {
+      let oldToken = ENSv2Token.load(previousTokenId!);
+      if (oldToken != null) {
+        oldToken.active = false;
+        oldToken.updatedAtBlock = event.block.number;
+        oldToken.save();
+      }
+    }
+  }
 
   // Nullable-Bytes comparison, not `!==`/`!=` (docs/plan.md's AssemblyScript
   // compiler gotcha, fix plan Phase 5): guard with a truthy check, then use
@@ -380,6 +462,11 @@ export function handleTokenRegenerated(event: TokenRegenerated): void {
     let slot = ENSv2NameSlot.load(oldTokenSlotId!);
     if (slot != null) {
       slot.currentToken = newToken.id;
+      // Every other slot-touching handler in this file sets updatedAt
+      // alongside updatedAtBlock; this was the one path that didn't,
+      // leaving updatedAt frozen for a slot only ever touched via
+      // regeneration (audit finding 26).
+      slot.updatedAt = event.block.timestamp;
       slot.updatedAtBlock = event.block.number;
       slot.save();
     }
@@ -436,16 +523,31 @@ function makeTokenTransfer(
     let slot = ENSv2NameSlot.load(tokenSlotId!);
     if (slot != null) {
       slot.owner = toAccount.id;
+      // Was previously only ever set at registration time (handleLabelRegistered)
+      // and never revisited on transfer, while the structurally identical
+      // sibling field `owner` stayed live — froze at the original registrant
+      // forever after the first transfer (audit finding 8).
+      slot.registrant = toAccount.id;
       slot.updatedAtBlock = block.number;
       slot.save();
 
-      // Subsequent transfers on a migrated slot keep writing to the same
-      // legacy field the migration event corrected (docs/plan.md Phase 6).
+      // Keep the legacy-compatibility Domain/Registration owner/registrant
+      // fields live on every transfer, for BOTH migrated and native
+      // ENSv2 .eth names — previously this branch only ran for migrated
+      // slots, so a native ENSv2 name's Domain.owner/registrant and
+      // Registration.registrant permanently retained the original owner
+      // after the very first transfer, contradicting this projection's own
+      // stated purpose of keeping legacy consumers working unchanged
+      // (audit finding 8).
       let isEth = slot.registry.equals(getEthRegistryAddress());
-      if (slot.migratedFromV1 && isEth) {
+      if (isEth) {
         let domainId = getEthDomainId(slot);
         if (domainId) {
-          correctMigratedLegacyOwner(domainId!, slot.labelhash, toAccount.id);
+          if (slot.migratedFromV1) {
+            correctMigratedLegacyOwner(domainId!, slot.labelhash, toAccount.id);
+          } else {
+            updateEthDomainOwner(domainId!, slot.labelhash, toAccount.id);
+          }
         }
       }
     }

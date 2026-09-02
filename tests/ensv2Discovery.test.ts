@@ -1,5 +1,10 @@
 import { Address, BigInt, ethereum } from "@graphprotocol/graph-ts";
-import { assert, newMockEvent, test } from "matchstick-as/assembly/index";
+import {
+  assert,
+  dataSourceMock,
+  newMockEvent,
+  test,
+} from "matchstick-as/assembly/index";
 import { handleProxyDeployed } from "../src/ensv2Discovery";
 import { ProxyDeployed } from "../src/types/VerifiableFactory/VerifiableFactory";
 
@@ -61,7 +66,9 @@ const createProxyDeployedEvent = (
 // matchstick-as) is that ENSv2RegistryTemplate.create() actually registered
 // a dynamic data source — that needs a real graph-node/Subgraph Studio
 // check per the Phase 1 plan's verification section.
-test("handleProxyDeployed creates an ENSv2Registry row with kind UNKNOWN for any implementation", () => {
+test("handleProxyDeployed creates an ENSv2Registry row with kind UNKNOWN for any implementation, and captures the implementation address (audit finding 4)", () => {
+  dataSourceMock.setNetwork("sepolia");
+
   let event = createProxyDeployedEvent(PROXY_ADDRESS, IMPLEMENTATION);
   handleProxyDeployed(event);
 
@@ -72,5 +79,11 @@ test("handleProxyDeployed creates an ENSv2Registry row with kind UNKNOWN for any
     id,
     "address",
     Address.fromString(PROXY_ADDRESS).toHexString()
+  );
+  assert.fieldEquals(
+    "ENSv2Registry",
+    id,
+    "implementation",
+    Address.fromString(IMPLEMENTATION).toHexString()
   );
 });

@@ -20,6 +20,20 @@ export function processEACRolesChanged(
   transactionID: Bytes,
   logIndex: BigInt
 ): void {
+  // A registry-emitted EACRolesChanged is dispatched here TWICE for the
+  // same physical log: once via the address-bound registry data source,
+  // once via the addressless PermissionedResolver wildcard source, since
+  // both bind the byte-identical event signature (audit finding 11).
+  // historyId is a deterministic function of the log itself (block +
+  // logIndex), so checking for it first is a free, exact way to detect and
+  // skip the second dispatch — no address-based source-type check needed.
+  let historyId = Bytes.fromByteArray(
+    concat(uint256ToByteArray(block.number), uint256ToByteArray(logIndex))
+  );
+  if (ENSv2RoleChange.load(historyId) != null) {
+    return;
+  }
+
   let contractId: Bytes = contract;
   let accountEntity = createOrLoadAccount(account);
 
@@ -47,13 +61,8 @@ export function processEACRolesChanged(
   assignment.updatedAtBlock = block.number;
   assignment.save();
 
-  // Replicates utils.ts::createEventID's own body (block.number + logIndex,
-  // each a 32-byte big-endian value, concatenated) — that helper takes a
-  // full ethereum.Event, not available here since only its constituent
-  // fields are passed through from each wrapper.
-  let historyId = Bytes.fromByteArray(
-    concat(uint256ToByteArray(block.number), uint256ToByteArray(logIndex))
-  );
+  // historyId computed once, above (also serves as this function's own
+  // dedup check for the double-dispatch case).
   let history = new ENSv2RoleChange(historyId);
   history.contract = contract;
   history.resource = resource;

@@ -333,6 +333,14 @@ dataSources:
         - ENSv2ResolverUpdate
         - ENSv2SubregistryUpdate
         - OperatorApproval
+        # Actually written via ensv2Paths.ts/ensv2Domain.ts imports but
+        # missing from this list previously (audit finding 32).
+        - Domain
+        - Registration
+        - Account
+        - ENSv2RegistryNamespaceIndex
+        - ENSv2SlotPathIndex
+        - ENSv2PathNamespaceIndex
       abis:
         - name: PermissionedRegistry
           file: ./abis/PermissionedRegistry.json
@@ -388,6 +396,7 @@ dataSources:
       entities:
         - ENSv2Registration
         - ContractOwnership
+        - Account # actually written via createOrLoadAccount (audit finding 32)
       abis:
         - name: ETHRegistrar
           file: ./abis/ETHRegistrar.json
@@ -436,6 +445,11 @@ dataSources:
         - ENSv2ResolverData
         - ENSv2RoleAssignment
         - ENSv2RoleChange
+        # Actually written via getOrCreateResolver / processEACRolesChanged
+        # (audit finding 32).
+        - ENSv2Resolver
+        - ENSv2Resource
+        - Account
       abis:
         - name: PermissionedResolver
           file: ./abis/PermissionedResolver.json

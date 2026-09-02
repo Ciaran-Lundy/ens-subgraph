@@ -33,6 +33,11 @@ export function handleNameRegistered(event: NameRegistered): void {
     registration = new ENSv2Registration(id);
     registration.slot = id;
     registration.registrationDate = event.block.timestamp;
+    // NameRegistered carries only `duration`, not an absolute expiry — derive
+    // it once at creation; handleNameRenewed below refreshes it directly
+    // from NameRenewed's own newExpiry on every subsequent renewal. Never
+    // populated before this fix (audit finding 5).
+    registration.expiryDate = event.block.timestamp.plus(event.params.duration);
   }
 
   if (checkValidLabel(event.params.label)) {
@@ -66,6 +71,10 @@ export function handleNameRenewed(event: NameRenewed): void {
   registration.duration = event.params.duration;
   registration.paymentToken = event.params.paymentToken;
   registration.referrer = event.params.referrer;
+  // The contract's own already-resolved absolute expiry (not a delta) —
+  // was sitting right here unread alongside the three siblings above
+  // (audit finding 5).
+  registration.expiryDate = event.params.newExpiry;
   registration.save();
 }
 

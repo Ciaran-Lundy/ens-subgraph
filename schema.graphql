@@ -489,6 +489,12 @@ enum ENSv2ResolverResourceKind {
 type ENSv2Registry @entity(immutable: false) {
   id: Bytes! # registry address
   address: Bytes!
+  # Captured from VerifiableFactory.ProxyDeployed's own implementation param
+  # (audit finding 4) — not yet used to classify `kind` (that needs a known
+  # implementation-address-to-kind mapping, still pending), but preserved so
+  # a future classification fix can backfill already-indexed registries
+  # instead of requiring a full re-index.
+  implementation: Bytes
   kind: ENSv2RegistryKind!
   canonicalParentRegistry: ENSv2Registry
   canonicalParentLabel: String
@@ -592,7 +598,7 @@ type ENSv2Namespace @entity(immutable: false) {
 }
 
 type ENSv2NamespaceLink @entity(immutable: false) {
-  id: Bytes! # parent registry + parent slot + child address + activation log
+  id: Bytes! # parent registry + parent slot + child address (audit finding 24: this is a genuine upsert across multiple SubregistryUpdated events for the same triple, toggling `active`, not one row per activation)
   parentRegistry: ENSv2Registry!
   parentSlot: ENSv2NameSlot
   parentSlotId: BigInt!
@@ -715,19 +721,25 @@ type ENSv2SubregistryUpdate implements ENSv2NameSlotEvent @entity(immutable: tru
 }
 
 type ENSv2Registration @entity(immutable: false) {
-  id: Bytes! # registry address + slotId (same scheme as ENSv2NameSlot.id; the only write site is handleNameRegistered's nameSlotId(...) call)
+  id: Bytes! # registry address + slotId (same scheme as ENSv2NameSlot.id; computed independently at two write sites — handleNameRegistered AND handleNameRenewed both call nameSlotId(...) with the same inputs, audit finding 24)
   slot: ENSv2NameSlot!
   resource: ENSv2Resource
   path: ENSv2NamePath
   label: String
-  owner: Account
-  duration: BigInt
-  paymentToken: Bytes
-  referrer: Bytes
-  base: BigInt
-  premium: BigInt
+  # owner/duration/paymentToken/referrer/base/premium are all unconditionally
+  # set from non-optional NameRegistered event params on every creation
+  # path in handleNameRegistered — tightened from nullable to match that
+  # actual behavior (audit finding 33).
+  owner: Account!
+  duration: BigInt!
+  paymentToken: Bytes!
+  referrer: Bytes!
+  base: BigInt!
+  premium: BigInt!
   registrationDate: BigInt!
-  expiryDate: BigInt
+  # Now always set on creation (audit finding 5 fix, ensv2Registrar.ts) —
+  # tightened alongside the other six fields above for the same reason.
+  expiryDate: BigInt!
   transactionID: Bytes!
   logIndex: BigInt!
 }
@@ -735,7 +747,7 @@ type ENSv2Registration @entity(immutable: false) {
 # `ENSv2ResolverAlias` stores resolver level alias rules.
 # These rules affect effective resolution, but they do not mutate the legacy `Resolver` row for the source node.
 type ENSv2ResolverAlias @entity(immutable: false) {
-  id: Bytes! # resolver + fromName bytes
+  id: Bytes! # resolver + namehash of fromName (not the raw fromName bytes — audit finding 24)
   resolver: ENSv2Resolver!
   fromName: Bytes!
   toName: Bytes

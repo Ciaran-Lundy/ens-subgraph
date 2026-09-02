@@ -6,6 +6,7 @@
   "scripts": {
     "codegen": "graph codegen --output-dir src/types/",
     "test": "graph test",
+    "validate": "node scripts/validate-networks.mjs",
     "setup": "yarn codegen && yarn create-local && yarn deploy-local",
     "create-local": "graph create graphprotocol/ens --node http://127.0.0.1:8020",
     "deploy-local": "graph deploy graphprotocol/ens --ipfs http://localhost:5001 --node http://127.0.0.1:8020/ --version-label 0.0.1",

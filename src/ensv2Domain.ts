@@ -13,7 +13,7 @@
 // different — they're what real consumers read to find "who controls this
 // name" — so those get corrected, domain.owner does not.
 import { BigInt, Bytes, log } from "@graphprotocol/graph-ts";
-import { checkValidLabel } from "./utils";
+import { checkValidLabel, ETH_NODE } from "./utils";
 import { getEthRegistryAddress, getV2GracePeriod } from "./ensv2Constants";
 import { pathNamehash, registryNamespaceIndexId } from "./ensv2Utils";
 import {
@@ -47,6 +47,16 @@ export function getEthDomainId(slot: ENSv2NameSlot): Bytes | null {
     }
     let namespace = ENSv2Namespace.load(index.namespace);
     if (namespace == null || !namespace.active) {
+      continue;
+    }
+    // Only the genuine "eth" namespace can be the canonical parent —
+    // without this check, any active namespace whose namehash happens to
+    // resolve ETHRegistry as a subregistry would match, and setSubregistry
+    // has no on-chain restriction on which registry a caller points their
+    // own subregistry at (audit finding 12 / originally-closed issue #28,
+    // reopened with that evidence). Filtering on baseNamehash is what makes
+    // this deterministic instead of "whichever link was indexed first."
+    if (!namespace.baseNamehash.equals(ETH_NODE)) {
       continue;
     }
     let pathId = pathNamehash(namespace.baseNamehash, slot.labelhash);
@@ -91,6 +101,32 @@ export function correctMigratedLegacyOwner(
       registration.registrant = ownerId;
       registration.save();
     }
+  }
+}
+
+// Keeps the legacy-compatibility Domain/Registration owner/registrant
+// fields live on every transfer for a native ENSv2 (never-migrated) .eth
+// name — correctMigratedLegacyOwner above only runs for migratedFromV1
+// slots, so without this, a v2-native name's Domain.owner/registrant and
+// Registration.registrant permanently retain the original registrant after
+// the very first transfer (audit finding 8). No WrappedDomain branching is
+// needed here the way correctMigratedLegacyOwner has: a v2-native name has
+// no legacy NameWrapper-wrapped concept to detect.
+export function updateEthDomainOwner(
+  domainId: Bytes,
+  registrationId: Bytes,
+  ownerId: Bytes
+): void {
+  let domain = Domain.load(domainId);
+  if (domain != null) {
+    domain.owner = ownerId;
+    domain.registrant = ownerId;
+    domain.save();
+  }
+  let registration = Registration.load(registrationId);
+  if (registration != null) {
+    registration.registrant = ownerId;
+    registration.save();
   }
 }
 

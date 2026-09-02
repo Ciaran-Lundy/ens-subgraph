@@ -3,6 +3,7 @@ import {
   afterEach,
   assert,
   clearStore,
+  dataSourceMock,
   newMockEvent,
   test,
 } from "matchstick-as/assembly/index";
@@ -105,6 +106,7 @@ function ownershipParams(previousOwner: string, newOwner: string): Array<ethereu
 
 afterEach(() => {
   clearStore();
+  dataSourceMock.resetValues();
 });
 
 // --- shared accessControl.ts functions, called directly ---
@@ -342,6 +344,7 @@ test("nameWrapper: handleControllerChanged sets RegistrarController.active from 
 });
 
 test("ensv2Registry: handleENSv2ApprovalForAll bootstraps the registry and unpacks PermissionedRegistry's `account` param", () => {
+  dataSourceMock.setNetwork("sepolia");
   let mockEvent = newMockEvent();
   let event = new ENSv2ApprovalForAll(
     Address.fromString(CONTRACT),
