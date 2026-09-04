@@ -93,3 +93,51 @@ export function getEthRegistryAddress(): Address {
   );
   return Address.zero();
 }
+
+// Implementation (not proxy) addresses behind VerifiableFactory.ProxyDeployed
+// — the signal kindForAddress uses to classify a template-discovered
+// registry as USER/WRAPPER, and to tell a resolver deployment apart from a
+// registry one (audit finding 4 / GitHub #33 / #36). Sourced from
+// contracts-v2/contracts/deployments/sepolia/{UserRegistryImpl,
+// WrapperRegistryImpl,PermissionedResolverImpl}.json on the post-audit-2
+// branch — the same checkout Phase 10 already confirmed matches this
+// deployment's RootRegistry/ETHRegistry addresses exactly, not a stale
+// mismatched instance. Left lowercase as sourced from the deployment JSON;
+// Address comparison is byte-level, so EIP-55 checksum casing has no
+// functional effect (same precedent as ETHRenewerV1's address in
+// getV2GracePeriod's comment above).
+export function getUserRegistryImplAddress(): Address {
+  let network = dataSource.network();
+  if (network == "sepolia") {
+    return Address.fromString("0x624a25d67b59d587752ebec8dded8827dae52050");
+  }
+  log.critical(
+    "getUserRegistryImplAddress: no UserRegistry implementation address configured for network '{}'. Refusing to silently return the zero address (which would misclassify every USER registry as UNKNOWN) — add the real address for this network or fix the manifest's network label.",
+    [network]
+  );
+  return Address.zero();
+}
+
+export function getWrapperRegistryImplAddress(): Address {
+  let network = dataSource.network();
+  if (network == "sepolia") {
+    return Address.fromString("0x433f81a3e8921fc868ae1a04576f135d9a75b0f2");
+  }
+  log.critical(
+    "getWrapperRegistryImplAddress: no WrapperRegistry implementation address configured for network '{}'. Refusing to silently return the zero address (which would misclassify every WRAPPER registry as UNKNOWN) — add the real address for this network or fix the manifest's network label.",
+    [network]
+  );
+  return Address.zero();
+}
+
+export function getPermissionedResolverImplAddress(): Address {
+  let network = dataSource.network();
+  if (network == "sepolia") {
+    return Address.fromString("0x9eae5c2730a7dd16bdd1dee6421a1b91e3b0365e");
+  }
+  log.critical(
+    "getPermissionedResolverImplAddress: no PermissionedResolver implementation address configured for network '{}'. Refusing to silently return the zero address (which would fail to recognize resolver ProxyDeployed events, creating a bogus ENSv2Registry row for each one) — add the real address for this network or fix the manifest's network label.",
+    [network]
+  );
+  return Address.zero();
+}
