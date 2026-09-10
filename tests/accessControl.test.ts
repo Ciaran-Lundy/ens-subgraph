@@ -22,6 +22,8 @@ import {
   handleControllerAdded,
   handleControllerRemoved,
   handleLegacyControllerOwnershipTransferred,
+  handleUnwrappedControllerOwnershipTransferred,
+  handleWrappedControllerOwnershipTransferred,
 } from "../src/ethRegistrar";
 import {
   handleControllerChanged,
@@ -38,6 +40,8 @@ import {
   OwnershipTransferred as BaseRegistrarOwnershipTransferred,
 } from "../src/types/BaseRegistrar/BaseRegistrar";
 import { OwnershipTransferred as LegacyControllerOwnershipTransferred } from "../src/types/LegacyEthRegistrarController/LegacyEthRegistrarController";
+import { OwnershipTransferred as WrappedControllerOwnershipTransferred } from "../src/types/WrappedEthRegistrarController/WrappedEthRegistrarController";
+import { OwnershipTransferred as UnwrappedControllerOwnershipTransferred } from "../src/types/UnwrappedEthRegistrarController/UnwrappedEthRegistrarController";
 import {
   ApprovalForAll as NameWrapperApprovalForAll,
   ControllerChanged,
@@ -277,6 +281,48 @@ test("ethRegistrar: handleLegacyControllerOwnershipTransferred records the new o
     mockEvent.receipt
   );
   handleLegacyControllerOwnershipTransferred(event);
+  assert.fieldEquals(
+    "ContractOwnership",
+    Address.fromString(CONTRACT).toHexString(),
+    "owner",
+    Address.fromString(NEW_OWNER).toHexString()
+  );
+});
+
+test("ethRegistrar: handleWrappedControllerOwnershipTransferred records the new owner (same shared shape)", () => {
+  let mockEvent = newMockEvent();
+  let event = new WrappedControllerOwnershipTransferred(
+    Address.fromString(CONTRACT),
+    mockEvent.logIndex,
+    mockEvent.transactionLogIndex,
+    mockEvent.logType,
+    mockEvent.block,
+    mockEvent.transaction,
+    ownershipParams(OWNER, NEW_OWNER),
+    mockEvent.receipt
+  );
+  handleWrappedControllerOwnershipTransferred(event);
+  assert.fieldEquals(
+    "ContractOwnership",
+    Address.fromString(CONTRACT).toHexString(),
+    "owner",
+    Address.fromString(NEW_OWNER).toHexString()
+  );
+});
+
+test("ethRegistrar: handleUnwrappedControllerOwnershipTransferred records the new owner (same shared shape)", () => {
+  let mockEvent = newMockEvent();
+  let event = new UnwrappedControllerOwnershipTransferred(
+    Address.fromString(CONTRACT),
+    mockEvent.logIndex,
+    mockEvent.transactionLogIndex,
+    mockEvent.logType,
+    mockEvent.block,
+    mockEvent.transaction,
+    ownershipParams(OWNER, NEW_OWNER),
+    mockEvent.receipt
+  );
+  handleUnwrappedControllerOwnershipTransferred(event);
   assert.fieldEquals(
     "ContractOwnership",
     Address.fromString(CONTRACT).toHexString(),

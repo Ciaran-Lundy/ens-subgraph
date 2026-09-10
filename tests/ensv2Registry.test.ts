@@ -12,6 +12,7 @@ import {
   handleLabelRegistered,
   handleLabelReserved,
   handleLabelUnregistered,
+  handleParentUpdated,
   handleTokenRegenerated,
   handleTokenResource,
   handleTransferBatch,
@@ -22,12 +23,13 @@ import {
   LabelRegistered,
   LabelReserved,
   LabelUnregistered,
+  ParentUpdated,
   TokenRegenerated,
   TokenResource,
   TransferBatch,
   TransferSingle,
 } from "../src/types/RootRegistry/PermissionedRegistry";
-import { ENSv2Resource } from "../src/types/schema";
+import { ENSv2Registry, ENSv2Resource } from "../src/types/schema";
 
 const ROOT_REGISTRY = "0x8115186e8f2e0B0281E86Ab91f0f48Ba90364354";
 const ETH_REGISTRY = "0xbDC85dD5b15D7ECb354Cd7cb6f2C50B4f2C4f0e2";
@@ -840,4 +842,74 @@ test("cross-check with Phase 2: unregister -> re-register produces a new resourc
     }
   }
   assert.assertTrue(hasEndedAt);
+});
+
+const createParentUpdatedEvent = (
+  registryAddress: string,
+  parent: string,
+  label: string
+): ParentUpdated => {
+  let mockEvent = newMockEvent();
+  let event = new ParentUpdated(
+    Address.fromString(registryAddress),
+    mockEvent.logIndex,
+    mockEvent.transactionLogIndex,
+    mockEvent.logType,
+    mockEvent.block,
+    mockEvent.transaction,
+    mockEvent.parameters,
+    mockEvent.receipt
+  );
+  event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam("parent", ethereum.Value.fromAddress(Address.fromString(parent)))
+  );
+  event.parameters.push(
+    new ethereum.EventParam("label", ethereum.Value.fromString(label))
+  );
+  event.parameters.push(
+    new ethereum.EventParam("sender", ethereum.Value.fromAddress(Address.fromString(SENDER)))
+  );
+  return event;
+};
+
+test("handleParentUpdated sets canonicalParentRegistry/Label, then clears both when parent goes to address(0)", () => {
+  dataSourceMock.setNetwork("sepolia");
+
+  const registryAddress = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+  const parentAddress = "0xffffffffffffffffffffffffffffffffffffffff";
+  const zeroAddress = "0x0000000000000000000000000000000000000000";
+
+  const setEvent = createParentUpdatedEvent(registryAddress, parentAddress, "parentlabel");
+  handleParentUpdated(setEvent);
+
+  assert.fieldEquals(
+    "ENSv2Registry",
+    registryAddress,
+    "canonicalParentRegistry",
+    Address.fromString(parentAddress).toHexString()
+  );
+  assert.fieldEquals(
+    "ENSv2Registry",
+    registryAddress,
+    "canonicalParentLabel",
+    "parentlabel"
+  );
+
+  const clearEvent = createParentUpdatedEvent(registryAddress, zeroAddress, "");
+  handleParentUpdated(clearEvent);
+
+  let hasParentRegistry = false;
+  let hasParentLabel = false;
+  let registry = ENSv2Registry.load(Address.fromString(registryAddress));
+  if (registry != null) {
+    if (registry.canonicalParentRegistry) {
+      hasParentRegistry = true;
+    }
+    if (registry.canonicalParentLabel) {
+      hasParentLabel = true;
+    }
+  }
+  assert.assertTrue(!hasParentRegistry);
+  assert.assertTrue(!hasParentLabel);
 });
