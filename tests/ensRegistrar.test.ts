@@ -873,6 +873,46 @@ describe("BaseRegistrar's own NameRenewed/Transfer, and LegacyEthRegistrarContro
     assert.fieldEquals("NameRenewed", eventId, "expiryDate", "1620000000");
   });
 
+  test("handleNameRenewed processes a second, later renewal on the same Registration correctly", () => {
+    const labelhash =
+      "0x9090909090909090909090909090909090909090909090909090909090909090";
+    const labelhashAsInt =
+      "65388473922249145650957732710788465611258344281773494986987812145645061443728";
+
+    const newNewOwnerEvent = createNewOwnerEvent(
+      ETH_NODE.toHexString(),
+      labelhash,
+      DEFAULT_OWNER
+    );
+    handleNewOwner(newNewOwnerEvent);
+
+    let newRegistrationEvent = createNameRegisteredEventForBaseRegistrar(
+      labelhashAsInt,
+      DEFAULT_OWNER,
+      "1610000000"
+    );
+    handleNameRegistered(newRegistrationEvent);
+
+    let domainId = Bytes.fromByteArray(
+      crypto.keccak256(concat(ETH_NODE, Bytes.fromHexString(labelhash)))
+    );
+
+    handleNameRenewed(createNameRenewedEvent(labelhashAsInt, "1620000000"));
+    handleNameRenewed(createNameRenewedEvent(labelhashAsInt, "1630000000"));
+
+    // The second renewal's absolute expiry must win outright -- expiryDate
+    // is always a flat overwrite from the event's own value, not additive,
+    // so two renewals must not double-count anything.
+    let fetchedRegistration = Registration.load(Bytes.fromHexString(labelhash))!;
+    assert.assertTrue(
+      fetchedRegistration.expiryDate.equals(BigInt.fromString("1630000000"))
+    );
+    let fetchedDomain = Domain.load(domainId)!;
+    assert.assertTrue(
+      fetchedDomain.expiryDate!.equals(BigInt.fromString("1637776000"))
+    );
+  });
+
   test("handleNameTransferred updates Registration/Domain registrant, writes history, and no-ops for an unregistered tokenId", () => {
     const labelhash =
       "0xe1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1";
@@ -920,6 +960,30 @@ describe("BaseRegistrar's own NameRenewed/Transfer, and LegacyEthRegistrarContro
 
     let eventId = createEventID(transferEvent).toHexString();
     assert.fieldEquals("NameTransferred", eventId, "newOwner", Address.fromString(newOwner).toHexString());
+
+    // A second, later transfer on the same already-registered name -- a
+    // completely ordinary real-world sequence (a name gets resold) -- must
+    // keep updating registrant correctly, not just work once.
+    const thirdOwner = "0x1234567890123456789012345678901234567890";
+    const secondTransferEvent = createTransferEvent(
+      newOwner,
+      thirdOwner,
+      labelhashAsInt
+    );
+    handleNameTransferred(secondTransferEvent);
+
+    assert.fieldEquals(
+      "Registration",
+      Bytes.fromHexString(labelhash).toHexString(),
+      "registrant",
+      Address.fromString(thirdOwner).toHexString()
+    );
+    assert.fieldEquals(
+      "Domain",
+      domainId.toHexString(),
+      "registrant",
+      Address.fromString(thirdOwner).toHexString()
+    );
 
     // No Registration exists at all for this tokenId -- must no-op, not crash.
     const unregisteredLabelhash =
@@ -971,6 +1035,58 @@ describe("BaseRegistrar's own NameRenewed/Transfer, and LegacyEthRegistrarContro
     assert.assertTrue(
       fetchedRegistration.cost!.equals(BigInt.fromString("1000000000"))
     );
+  });
+
+  test("setNamePreimage's no-Domain branch: no crash, no Registration created, when the Domain was never registered at all", () => {
+    const labelhash =
+      "0xb4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4";
+    const label = "nodomain";
+
+    // No handleNewOwner, no handleNameRegistered -- the Domain this label
+    // would hash to genuinely doesn't exist anywhere in the store.
+    const legacyEvent = createLegacyNameRegisteredEvent(
+      label,
+      labelhash,
+      DEFAULT_OWNER,
+      "1000000000",
+      "1610000000"
+    );
+    handleNameRegisteredByLegacyController(legacyEvent);
+
+    assert.notInStore("Registration", Bytes.fromHexString(labelhash).toHexString());
+  });
+
+  test("setNamePreimage's no-Registration branch: updates Domain.labelName but creates no Registration", () => {
+    const labelhash =
+      "0xb7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7";
+    const label = "noregistration";
+
+    // handleNewOwner creates the Domain (via ENSRegistry), but
+    // handleNameRegistered (which creates the Registration) is deliberately
+    // skipped -- setNamePreimage should still update the Domain's
+    // labelName/name, but has nothing to attach cost/labelName to on the
+    // Registration side, so none gets created.
+    const newNewOwnerEvent = createNewOwnerEvent(
+      ETH_NODE.toHexString(),
+      labelhash,
+      DEFAULT_OWNER
+    );
+    handleNewOwner(newNewOwnerEvent);
+
+    const legacyEvent = createLegacyNameRegisteredEvent(
+      label,
+      labelhash,
+      DEFAULT_OWNER,
+      "1000000000",
+      "1610000000"
+    );
+    handleNameRegisteredByLegacyController(legacyEvent);
+
+    let domainId = Bytes.fromByteArray(
+      crypto.keccak256(concat(ETH_NODE, Bytes.fromHexString(labelhash)))
+    );
+    assert.fieldEquals("Domain", domainId.toHexString(), "labelName", label);
+    assert.notInStore("Registration", Bytes.fromHexString(labelhash).toHexString());
   });
 
   test("handleNameRenewedByLegacyController updates cost via the shared setNamePreimage path", () => {

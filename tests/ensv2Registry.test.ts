@@ -896,6 +896,63 @@ test("handleParentUpdated sets canonicalParentRegistry/Label, then clears both w
     "parentlabel"
   );
 
+  // Direct non-zero -> non-zero transition (parent changes from one real
+  // registry straight to another, never touching zero in between) -- both
+  // fields must move to the new parent's values, not just tolerate a
+  // clear-then-set sequence.
+  const secondParentAddress = "0xdddddddddddddddddddddddddddddddddddddddd";
+  const secondSetEvent = createParentUpdatedEvent(
+    registryAddress,
+    secondParentAddress,
+    "secondlabel"
+  );
+  handleParentUpdated(secondSetEvent);
+
+  assert.fieldEquals(
+    "ENSv2Registry",
+    registryAddress,
+    "canonicalParentRegistry",
+    Address.fromString(secondParentAddress).toHexString()
+  );
+  assert.fieldEquals(
+    "ENSv2Registry",
+    registryAddress,
+    "canonicalParentLabel",
+    "secondlabel"
+  );
+
+  // Invalid label while SETTING a real (non-zero) parent -- the parent
+  // itself must still update (label validity has nothing to do with
+  // whether the parent registry link is real), but the label must be
+  // cleared to null rather than either the malformed string or the STALE
+  // previous label sitting next to a new parent (audit finding 20's exact
+  // scenario -- a mismatch between which parent and which label a
+  // consumer sees).
+  const thirdParentAddress = "0xccccccccccccccccccccccccccccccccccccccc0";
+  const invalidLabelEvent = createParentUpdatedEvent(
+    registryAddress,
+    thirdParentAddress,
+    "invalid.label"
+  );
+  handleParentUpdated(invalidLabelEvent);
+
+  assert.fieldEquals(
+    "ENSv2Registry",
+    registryAddress,
+    "canonicalParentRegistry",
+    Address.fromString(thirdParentAddress).toHexString()
+  );
+  let hasStaleOrInvalidLabel = false;
+  let registryAfterInvalidLabel = ENSv2Registry.load(
+    Address.fromString(registryAddress)
+  );
+  if (registryAfterInvalidLabel != null) {
+    if (registryAfterInvalidLabel.canonicalParentLabel) {
+      hasStaleOrInvalidLabel = true;
+    }
+  }
+  assert.assertTrue(!hasStaleOrInvalidLabel);
+
   const clearEvent = createParentUpdatedEvent(registryAddress, zeroAddress, "");
   handleParentUpdated(clearEvent);
 

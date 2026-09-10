@@ -304,6 +304,36 @@ describe("handleFusesSet", () => {
     // domain.expiryDate (100), so once PCC is burned it takes over.
     assert.fieldEquals("Domain", node, "expiryDate", "500");
   });
+
+  test("does not downgrade Domain.expiryDate when the wrapped expiry is earlier", () => {
+    const node =
+      "0x6666666666666666666666666666666666666666666666666666666666666666";
+    let nodeBytes = Bytes.fromHexString(node);
+
+    let domain = new Domain(nodeBytes);
+    domain.owner = Bytes.fromHexString(DEFAULT_OWNER);
+    domain.isMigrated = true;
+    domain.subdomainCount = 0;
+    domain.createdAt = BigInt.fromI32(0);
+    domain.expiryDate = BigInt.fromI32(99999);
+    domain.save();
+
+    let wrappedDomain = new WrappedDomain(nodeBytes);
+    wrappedDomain.domain = nodeBytes;
+    wrappedDomain.expiryDate = BigInt.fromI32(100);
+    wrappedDomain.fuses = 0;
+    wrappedDomain.owner = Bytes.fromHexString(DEFAULT_OWNER);
+    wrappedDomain.save();
+
+    const event = createFusesSetEvent(node, PARENT_CANNOT_CONTROL);
+    handleFusesSet(event);
+
+    // fuses always updates unconditionally...
+    assert.fieldEquals("WrappedDomain", node, "fuses", PARENT_CANNOT_CONTROL.toString());
+    // ...but wrappedDomain.expiryDate (100) is NOT later than the existing
+    // domain.expiryDate (99999), so the domain-side bump must be skipped.
+    assert.fieldEquals("Domain", node, "expiryDate", "99999");
+  });
 });
 
 describe("handleExpiryExtended", () => {
@@ -346,6 +376,37 @@ describe("handleExpiryExtended", () => {
 
     assert.fieldEquals("WrappedDomain", node, "expiryDate", "1000");
     assert.fieldEquals("Domain", node, "expiryDate", "1000");
+  });
+
+  test("still updates WrappedDomain.expiryDate but does not downgrade Domain.expiryDate", () => {
+    const node =
+      "0x7777777777777777777777777777777777777777777777777777777777777777";
+    let nodeBytes = Bytes.fromHexString(node);
+
+    let domain = new Domain(nodeBytes);
+    domain.owner = Bytes.fromHexString(DEFAULT_OWNER);
+    domain.isMigrated = true;
+    domain.subdomainCount = 0;
+    domain.createdAt = BigInt.fromI32(0);
+    domain.expiryDate = BigInt.fromI32(99999);
+    domain.save();
+
+    let wrappedDomain = new WrappedDomain(nodeBytes);
+    wrappedDomain.domain = nodeBytes;
+    wrappedDomain.expiryDate = BigInt.fromI32(100);
+    wrappedDomain.fuses = PARENT_CANNOT_CONTROL;
+    wrappedDomain.owner = Bytes.fromHexString(DEFAULT_OWNER);
+    wrappedDomain.save();
+
+    const event = createExpiryExtendedEvent(node, BigInt.fromI32(500));
+    handleExpiryExtended(event);
+
+    // wrappedDomain.expiryDate always updates unconditionally, regardless
+    // of whether it would be a downgrade for the Domain side...
+    assert.fieldEquals("WrappedDomain", node, "expiryDate", "500");
+    // ...but 500 is NOT later than the existing domain.expiryDate (99999),
+    // so the domain-side bump must be skipped.
+    assert.fieldEquals("Domain", node, "expiryDate", "99999");
   });
 });
 
@@ -390,6 +451,57 @@ describe("handleTransferSingle / handleTransferBatch", () => {
       "WrappedTransfer",
       eventId,
       "owner",
+      Address.fromString(newOwner).toHexString()
+    );
+  });
+
+  test("handleTransferSingle on an already-wrapped name updates owner but preserves fuses/expiryDate", () => {
+    const tokenId = BigInt.fromI32(222333444);
+    const node =
+      "0x000000000000000000000000000000000000000000000000000000000d408a04";
+    let nodeBytes = Bytes.fromHexString(node);
+
+    let domain = new Domain(nodeBytes);
+    domain.owner = Bytes.fromHexString(DEFAULT_OWNER);
+    domain.isMigrated = true;
+    domain.subdomainCount = 0;
+    domain.createdAt = BigInt.fromI32(0);
+    domain.save();
+
+    // Real wrapped state, not the placeholder zeros makeWrappedTransfer uses
+    // for a fresh mint -- this is what a real, already-wrapped name looks
+    // like by the time it gets transferred again.
+    let wrappedDomain = new WrappedDomain(nodeBytes);
+    wrappedDomain.domain = nodeBytes;
+    wrappedDomain.expiryDate = BigInt.fromI32(999999);
+    wrappedDomain.fuses = PARENT_CANNOT_CONTROL;
+    wrappedDomain.owner = Bytes.fromHexString(DEFAULT_OWNER);
+    wrappedDomain.save();
+
+    const newOwner = "0xF0205A3A3b2A69De6Dbf7f01ED13B2108B2c4321";
+    const event = createTransferSingleEvent(DEFAULT_OWNER, newOwner, tokenId);
+    handleTransferSingle(event);
+
+    assert.fieldEquals(
+      "WrappedDomain",
+      node,
+      "owner",
+      Address.fromString(newOwner).toHexString()
+    );
+    // makeWrappedTransfer's update branch (wrappedDomain already existed)
+    // only ever reassigns .owner -- fuses/expiryDate must survive untouched,
+    // not get reset to the fresh-mint placeholder values.
+    assert.fieldEquals("WrappedDomain", node, "expiryDate", "999999");
+    assert.fieldEquals(
+      "WrappedDomain",
+      node,
+      "fuses",
+      PARENT_CANNOT_CONTROL.toString()
+    );
+    assert.fieldEquals(
+      "Domain",
+      node,
+      "wrappedOwner",
       Address.fromString(newOwner).toHexString()
     );
   });
@@ -444,5 +556,74 @@ describe("handleTransferSingle / handleTransferBatch", () => {
     ).toHexString();
     assert.fieldEquals("WrappedTransfer", eventIdA, "domain", nodeA);
     assert.fieldEquals("WrappedTransfer", eventIdB, "domain", nodeB);
+  });
+
+  test("handleTransferBatch handles a fresh mint and an already-wrapped transfer in the same batch", () => {
+    const freshTokenId = BigInt.fromI32(555666777);
+    const existingTokenId = BigInt.fromI32(888999111);
+    const freshNode =
+      "0x00000000000000000000000000000000000000000000000000000000211ecd59";
+    const existingNode =
+      "0x0000000000000000000000000000000000000000000000000000000034fd0cc7";
+
+    let freshDomain = new Domain(Bytes.fromHexString(freshNode));
+    freshDomain.owner = Bytes.fromHexString(DEFAULT_OWNER);
+    freshDomain.isMigrated = true;
+    freshDomain.subdomainCount = 0;
+    freshDomain.createdAt = BigInt.fromI32(0);
+    freshDomain.save();
+
+    let existingDomain = new Domain(Bytes.fromHexString(existingNode));
+    existingDomain.owner = Bytes.fromHexString(DEFAULT_OWNER);
+    existingDomain.isMigrated = true;
+    existingDomain.subdomainCount = 0;
+    existingDomain.createdAt = BigInt.fromI32(0);
+    existingDomain.save();
+
+    // Only the second token already has a real WrappedDomain -- the first
+    // exercises the create-placeholder branch of makeWrappedTransfer in the
+    // very same batch call as an update to an existing row, proving the
+    // per-index branching inside handleTransferBatch's loop doesn't leak
+    // state between iterations.
+    let existingWrappedDomain = new WrappedDomain(
+      Bytes.fromHexString(existingNode)
+    );
+    existingWrappedDomain.domain = Bytes.fromHexString(existingNode);
+    existingWrappedDomain.expiryDate = BigInt.fromI32(555555);
+    existingWrappedDomain.fuses = PARENT_CANNOT_CONTROL;
+    existingWrappedDomain.owner = Bytes.fromHexString(DEFAULT_OWNER);
+    existingWrappedDomain.save();
+
+    const newOwner = "0xF0205A3A3b2A69De6Dbf7f01ED13B2108B2c4321";
+    const event = createTransferBatchEvent(DEFAULT_OWNER, newOwner, [
+      freshTokenId,
+      existingTokenId,
+    ]);
+    handleTransferBatch(event);
+
+    // Fresh mint: placeholder expiry/fuses.
+    assert.fieldEquals(
+      "WrappedDomain",
+      freshNode,
+      "owner",
+      Address.fromString(newOwner).toHexString()
+    );
+    assert.fieldEquals("WrappedDomain", freshNode, "expiryDate", "0");
+    assert.fieldEquals("WrappedDomain", freshNode, "fuses", "0");
+
+    // Already-wrapped: owner updates, real fuses/expiryDate survive.
+    assert.fieldEquals(
+      "WrappedDomain",
+      existingNode,
+      "owner",
+      Address.fromString(newOwner).toHexString()
+    );
+    assert.fieldEquals("WrappedDomain", existingNode, "expiryDate", "555555");
+    assert.fieldEquals(
+      "WrappedDomain",
+      existingNode,
+      "fuses",
+      PARENT_CANNOT_CONTROL.toString()
+    );
   });
 });

@@ -335,14 +335,11 @@ test("handleNewOwnerOldRegistry creates a fresh domain when none exists, then sk
     Address.fromString(DEFAULT_OWNER).toHexString()
   );
 
-  // Migrate the domain (as the current ENSRegistry eventually would), then
-  // fire the OldRegistry event again with a different owner -- must be a
-  // complete no-op, since the old registry must never override state for a
-  // domain that has already migrated to the current one.
-  let domain = Domain.load(subnode)!;
-  domain.isMigrated = true;
-  domain.save();
-
+  // Domain already exists (from the first event above) AND is still
+  // isMigrated: false -- a second, genuine repeated-update scenario on the
+  // old registry before migration happens. Must still process (the gate is
+  // `domain == null || domain.isMigrated == false`, not just `domain ==
+  // null`), unlike the already-migrated case tested below.
   const secondOwner = "0xF0205A3A3b2A69De6Dbf7f01ED13B2108B2c4321";
   const secondEvent = createNewOwnerEvent(
     ROOT_NODE.toHexString(),
@@ -355,7 +352,31 @@ test("handleNewOwnerOldRegistry creates a fresh domain when none exists, then sk
     "Domain",
     subnode.toHexString(),
     "owner",
-    Address.fromString(DEFAULT_OWNER).toHexString()
+    Address.fromString(secondOwner).toHexString()
+  );
+  assert.fieldEquals("Domain", subnode.toHexString(), "isMigrated", "false");
+
+  // Migrate the domain (as the current ENSRegistry eventually would), then
+  // fire the OldRegistry event again with a third owner -- must be a
+  // complete no-op, since the old registry must never override state for a
+  // domain that has already migrated to the current one.
+  let domain = Domain.load(subnode)!;
+  domain.isMigrated = true;
+  domain.save();
+
+  const thirdOwner = "0x1234567890123456789012345678901234567890";
+  const thirdEvent = createNewOwnerEvent(
+    ROOT_NODE.toHexString(),
+    NODE_OLDOWNER_LABEL,
+    thirdOwner
+  );
+  handleNewOwnerOldRegistry(thirdEvent);
+
+  assert.fieldEquals(
+    "Domain",
+    subnode.toHexString(),
+    "owner",
+    Address.fromString(secondOwner).toHexString()
   );
 });
 
