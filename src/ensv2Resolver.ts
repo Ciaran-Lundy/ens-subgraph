@@ -1,18 +1,17 @@
-// ENSv2-specific resolver events (docs/plan.md Phase 7). PermissionedResolver's
+// ENSv2-specific resolver events. PermissionedResolver's
 // standard ENSIP events (AddrChanged, TextChanged, etc.) need no wiring
 // here — see Phase 1's Decision 4 in ensv2Discovery.ts/subgraph.yaml: the
 // existing addressless "Resolver" data source already picks them up
 // (addressless sources match by event topic0 network-wide, not by contract
-// address/ABI). docs/plan.md's Phase 7 also describes a resolver.ts refactor
+// address/ABI). An earlier plan draft also described a resolver.ts refactor
 // to "share logic" with a second wiring of those same standard events —
 // that's moot given the above (there is no second wiring for it to share
-// with), so resolver.ts is untouched this phase; see
-// docs/phases/phase-7-resolver-data.md for the full reasoning.
+// with), so resolver.ts is untouched this phase.
 //
 // None of the handlers below ever call ensv2Domain.ts::projectPathToDomain
 // or construct Domain rows — true by construction, not by a guard: alias
 // and resource records are ENSv2-only surfaces, never a substitute for a
-// real registry path (docs/plan.md's explicit non-goal).
+// real registry path (an explicit non-goal of this design).
 import { Address, BigInt, Bytes, crypto, ethereum } from "@graphprotocol/graph-ts";
 import { concat, ROOT_NODE, uint256ToByteArray } from "./utils";
 import { decodeName } from "./nameWrapper";
@@ -97,8 +96,7 @@ export function handleAliasChanged(event: AliasChanged): void {
   alias.fromNameDecoded = decodedNameOf(event.params.fromName);
 
   // Empty toName is the clearing signal — not explicit in the proposal, but
-  // consistent with the address(0)-clears convention used everywhere else
-  // (docs/plan.md Phase 7 Decision 2).
+  // consistent with the address(0)-clears convention used everywhere else.
   let hasTarget = event.params.toName.length > 0;
   if (hasTarget) {
     alias.toName = event.params.toName;
@@ -178,7 +176,7 @@ export function handleNamedResource(event: NamedResource): void {
 
 // NamedTextResource/NamedDataResource share an identical event shape
 // (resource, name, keyHash, key) — one internal helper, thin wrapper
-// exports (docs/plan.md Phase 7 Decision 5). AssemblyScript has no union
+// exports. AssemblyScript has no union
 // types, so the helper takes primitives rather than either event class.
 function handleNamedKeyedResource(
   resolverAddress: Address,
@@ -271,7 +269,7 @@ export function handleDataChanged(event: DataChanged): void {
   // bytes indexed indexedData) — the actual data bytes are only logged as
   // an indexed parameter (indexedData), so only its keccak256 hash reaches
   // the log, never the raw bytes. Not an implementation gap — a hard ABI
-  // constraint (docs/plan.md Phase 7 Decision 3).
+  // constraint.
   data.blockNumber = event.block.number;
   data.transactionID = event.transaction.hash;
   data.logIndex = event.logIndex;

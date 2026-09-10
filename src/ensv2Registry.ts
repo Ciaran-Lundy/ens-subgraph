@@ -167,9 +167,9 @@ export function handleLabelRegistered(event: LabelRegistered): void {
   // loop below depends on. Passing bootstrapRegistry's own returned
   // registry object here instead (removing this "redundant" reload) was
   // tried and reverted after it silently broke path materialisation for
-  // every name under root — see docs/phases/fix-phase-2-*.md.
+  // every name under root.
   let registry = ENSv2Registry.load(registryId)!;
-  // The other bounded loop (docs/plan.md Phase 4): materialise a path for
+  // The other bounded loop: materialise a path for
   // each namespace this registry currently, actively serves.
   materializePathsForSlot(registry, slot, event, isV1Migration);
 }
@@ -202,7 +202,7 @@ export function handleLabelReserved(event: LabelReserved): void {
   slot.updatedAtBlock = event.block.number;
   slot.save();
   // No history entity — LabelReserved isn't in the proposal's history-entity
-  // event list (docs/plan.md Phase 2 Decision 3).
+  // event list.
 }
 
 export function handleLabelUnregistered(event: LabelUnregistered): void {
@@ -222,7 +222,7 @@ export function handleLabelUnregistered(event: LabelUnregistered): void {
   }
 
   // status is the authoritative signal; owner/registrant/expiryDate are left
-  // as last-known values, not nulled (docs/plan.md Phase 2 Decision 4).
+  // as last-known values, not nulled.
   slot.status = "AVAILABLE";
   slot.updatedAt = event.block.timestamp;
   slot.updatedAtBlock = event.block.number;
@@ -289,7 +289,7 @@ export function handleExpiryUpdated(event: ExpiryUpdated): void {
   // in the same transaction; the existing v1 handlers correctly maintain
   // Registration/Domain for those from that event. Syncing the v2 side too
   // for a RESERVED slot would race with, and could overwrite, the correct
-  // v1-derived values — so do nothing there (docs/plan.md Phase 6).
+  // v1-derived values — so do nothing there.
   let isEth = slot.registry.equals(getEthRegistryAddress());
   if (isEth && slot.status == "REGISTERED") {
     let registration = Registration.load(slot.labelhash);
@@ -356,11 +356,11 @@ export function handleTokenResource(event: TokenResource): void {
   resourceEntity.slot = slot.id;
   resourceEntity.updatedAtBlock = event.block.number;
 
-  // Nullable-Bytes comparison, not `!==`/`!=` (docs/plan.md's AssemblyScript
+  // Nullable-Bytes comparison, not `!==`/`!=` (AssemblyScript
   // compiler gotcha): guard with a truthy check, then use .equals() on the
   // narrowed value. Captured before the token load/create below so the OLD
   // token id is still available for the deactivation branch that mirrors
-  // the resource deactivation a few lines down (audit finding 13).
+  // the resource deactivation a few lines down.
   let previousTokenId = slot.currentToken;
 
   let token = ENSv2Token.load(tokenEntityId(registryId, event.params.tokenId));
@@ -398,7 +398,7 @@ export function handleTokenResource(event: TokenResource): void {
     }
   }
 
-  // Nullable-Bytes comparison, not `!==`/`!=` (docs/plan.md's AssemblyScript
+  // Nullable-Bytes comparison, not `!==`/`!=` (AssemblyScript
   // compiler gotcha, fix plan Phase 5): guard with a truthy check, then use
   // .equals() on the narrowed value.
   let previousResourceId = slot.currentResource;
@@ -456,7 +456,7 @@ export function handleTokenRegenerated(event: TokenRegenerated): void {
 
   // ENSv2TokenRegenerated.slot is non-null — only write history (and
   // repoint the slot/resource's currentToken) when the old token actually
-  // had a resolved slot (docs/plan.md Phase 3 Decision 3's constraint).
+  // had a resolved slot.
   let oldTokenSlotId = oldToken.slot;
   if (oldTokenSlotId) {
     let slot = ENSv2NameSlot.load(oldTokenSlotId!);
@@ -505,8 +505,8 @@ function makeTokenTransfer(
   if (token == null) {
     // Fresh mint's TransferSingle can arrive before TokenResource — create
     // a placeholder now, TokenResource reconciles slot/resource later
-    // (docs/plan.md Phase 3 Decision 3, mirrors nameWrapper.ts's
-    // placeholder-then-reconcile pattern for WrappedDomain).
+    // (mirrors nameWrapper.ts's placeholder-then-reconcile pattern for
+    // WrappedDomain).
     token = new ENSv2Token(tokenEntityId(registryId, tokenId));
     token.registry = registryId;
     token.tokenId = tokenId;

@@ -131,8 +131,8 @@ export function handleNameUnwrapped(event: NameUnwrappedEvent): void {
   let domain = createOrLoadDomain(node);
   domain.wrappedOwner = null;
   // Nullable-Bytes comparison against a real value (not null) hits the same
-  // compileBinaryOverload crash as comparing against null (docs/plan.md's
-  // AssemblyScript compiler gotcha) — isolate the .equals() call behind a
+  // compileBinaryOverload crash as comparing against null (AssemblyScript
+  // compiler gotcha) — isolate the .equals() call behind a
   // truthy guard and assign the boolean to a local first, never inline.
   let parentIsEth = false;
   if (domain.parent) {

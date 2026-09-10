@@ -1,4 +1,4 @@
-// ETHRegistrar enrichment (docs/plan.md Phase 6). NameRegistered/NameRenewed
+// ETHRegistrar enrichment. NameRegistered/NameRenewed
 // are emitted by ETHRegistrar, a different contract from ETHRegistry — the
 // registry these events enrich is always the canonical ETHRegistry
 // (getEthRegistryAddress()), never event.address (that's ETHRegistrar's own
@@ -8,9 +8,8 @@
 // (nameSlotId(ETHRegistry, toSlotId(tokenId))) rather than a new tx-based
 // scheme — this is what makes correlating registry/registrar events by
 // tokenId order-independent "for free": the id needs nothing from the
-// other event, so it doesn't matter which arrives first (docs/plan.md:
-// "correlate by transaction hash plus token ID... do not rely on log
-// order").
+// other event, so it doesn't matter which arrives first — "correlate by
+// transaction hash plus token ID, do not rely on log order."
 import { log } from "@graphprotocol/graph-ts";
 import { checkValidLabel, createOrLoadAccount } from "./utils";
 import { getEthRegistryAddress } from "./ensv2Constants";

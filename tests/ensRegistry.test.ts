@@ -120,7 +120,7 @@ test("sets 0x0 resolver to null", () => {
   let fetchedDomain = Domain.load(Bytes.fromHexString(namehash))!;
 
   // assert.assertNotNull<T> does `value != null` internally, which crashes
-  // the AS compiler for a nullable Bytes generic (docs/plan.md's compiler
+  // the AS compiler for a nullable Bytes generic (a known compiler
   // gotcha) — use a truthy check assigned to a local boolean instead.
   let hasResolver = false;
   if (fetchedDomain.resolver) {
@@ -134,7 +134,7 @@ test("sets 0x0 resolver to null", () => {
   fetchedDomain = Domain.load(Bytes.fromHexString(namehash))!;
 
   // assert.assertNull<T> does `value == null` internally, which crashes the
-  // AS compiler for a nullable Bytes generic (docs/plan.md's compiler
-  // gotcha, same as assertNotNull above) — use a truthy check instead.
+  // AS compiler for a nullable Bytes generic (the same compiler
+  // gotcha as assertNotNull above) — use a truthy check instead.
   assert.assertTrue(!fetchedDomain.resolver);
 });

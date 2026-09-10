@@ -112,8 +112,7 @@ export function getOrCreateRootNamespace(
 // VerifiableFactory.deployProxy() is used for both registry and resolver
 // proxies (per the ENSv2 Subgraph Upgrade Proposal's "Discovery" section).
 // Resolver events are handled entirely via the addressless PermissionedResolver
-// data source (docs/plan.md prerequisite #8 resolved toward addressless), so
-// resolvers need no discovery step — and now that the implementation address
+// data source, so resolvers need no discovery step — and now that the implementation address
 // is known (GitHub #34), a resolver deployment can be told apart from a
 // registry one directly: skip templating/registry-row creation entirely for
 // it, rather than creating a harmless-but-wrong ENSv2Registry row the way

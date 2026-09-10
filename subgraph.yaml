@@ -283,7 +283,7 @@ dataSources:
           handler: handleUnwrappedControllerOwnershipTransferred
 
   # ---------------------------------------------------------------------
-  # ENSv2 — additive data sources per docs/plan.md Phase 1.
+  # ENSv2 — additive data sources.
   # `address` fields below are Sepolia addresses used as the manifest
   # default since no mainnet ENSv2 deployment exists yet (`network: mainnet`
   # is kept for consistency — a subgraph can't mix networks). Real target

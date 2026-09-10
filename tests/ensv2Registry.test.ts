@@ -553,7 +553,7 @@ test("unregistration flips status to AVAILABLE, keeps stale fields, records hist
   let slotId = registryId.concat(bigIntHex32(BigInt.zero()));
   assert.fieldEquals("ENSv2NameSlot", slotId, "status", "AVAILABLE");
   // stale fields from the registration are left as last-known values, not
-  // nulled (docs/plan.md Phase 2 Decision 4)
+  // nulled
   assert.fieldEquals("ENSv2NameSlot", slotId, "label", "bob");
   assert.fieldEquals(
     "ENSv2NameSlot",

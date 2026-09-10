@@ -61,8 +61,8 @@ export function getEthDomainId(slot: ENSv2NameSlot): Bytes | null {
     }
     let pathId = pathNamehash(namespace.baseNamehash, slot.labelhash);
     let path = ENSv2NamePath.load(pathId);
-    // Nullable-Bytes truthy check, not `!== null` (docs/plan.md's
-    // AssemblyScript compiler gotcha, fix plan Phase 5).
+    // Nullable-Bytes truthy check, not `!== null`
+    // (AssemblyScript compiler gotcha, fix plan Phase 5).
     if (path != null && path.domain) {
       return path.domain!;
     }
@@ -73,7 +73,7 @@ export function getEthDomainId(slot: ENSv2NameSlot): Bytes | null {
 // The single reusable implementation of the wrapped/unwrapped correction
 // branch — called both at initial migration-flagged registration and at
 // every subsequent TransferSingle/TransferBatch on a migratedFromV1 slot
-// (docs/plan.md: transfers must keep writing to "the same legacy field").
+// (transfers must keep writing to "the same legacy field").
 // Re-checks WrappedDomain existence fresh every call rather than caching the
 // original classification.
 export function correctMigratedLegacyOwner(

@@ -64,7 +64,7 @@ const createProxyDeployedEvent = (
 };
 
 // VerifiableFactory.deployProxy() is used for both registry and resolver
-// proxies (docs/plan.md Decision 3). This asserts the fallback case: an
+// proxies. This asserts the fallback case: an
 // implementation address that's neither a known registry impl (see the
 // USER/WRAPPER tests below) nor the known resolver impl (see the
 // no-row-created test below) still gets templated and creates an

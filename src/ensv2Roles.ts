@@ -1,4 +1,4 @@
-// Shared EACRolesChanged handling (docs/plan.md Phase 8) — identical event
+// Shared EACRolesChanged handling — identical event
 // signature on PermissionedRegistry and PermissionedResolver, but distinct
 // generated TypeScript classes (different codegen paths) and AssemblyScript
 // has no union types (same constraint hit in Phase 7 for

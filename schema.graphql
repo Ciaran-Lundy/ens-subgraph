@@ -457,11 +457,11 @@ type VersionChanged implements ResolverEvent @entity(immutable: true) {
 }
 
 # ---------------------------------------------------------------------------
-# ENSv2 — additive schema per docs/plan.md / ENSv2 Subgraph Upgrade Proposal.
+# ENSv2 — additive schema per the ENSv2 Subgraph Upgrade Proposal.
 # ENSv2-native entities are the source of truth for registries, namespaces,
 # slots, tokens, resources, and linked paths. Domain (above) and
-# ENSv2NamePath remain materialised projections — see docs/plan.md's
-# "Approach" section for the late-link/bounded-cost projection rule.
+# ENSv2NamePath remain materialised projections, per the proposal's
+# "Approach" section's late-link/bounded-cost projection rule.
 # ---------------------------------------------------------------------------
 
 enum ENSv2RegistryKind {
@@ -788,8 +788,7 @@ type ENSv2ResolverData @entity(immutable: false) {
   # bytes — there is no event this handler could ever populate this field
   # from. Not a gap to fix; kept only so a future ABI/event change that
   # does carry the raw value has somewhere to write it (see
-  # src/ensv2Resolver.ts::handleDataChanged and
-  # docs/combined-findings-and-remediation-plan.md finding 38).
+  # src/ensv2Resolver.ts::handleDataChanged).
   value: Bytes
   blockNumber: BigInt!
   transactionID: Bytes!
@@ -818,9 +817,8 @@ type ENSv2PathNamespaceIndex @entity(immutable: true) {
 }
 
 # ---------------------------------------------------------------------------
-# Access & admin visibility (fix plan Phase 3, docs/ENS_Subgraph_Audit.md
-# findings 1 and 6). Current-state only, no separate history entities — see
-# docs/phases/fix-phase-3-access-admin-visibility.md Design decision 2.
+# Access & admin visibility (fix plan Phase 3). Current-state only, no
+# separate history entities (deliberate design decision, not an oversight).
 # ---------------------------------------------------------------------------
 
 type OperatorApproval @entity(immutable: false) {

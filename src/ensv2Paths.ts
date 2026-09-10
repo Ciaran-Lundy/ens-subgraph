@@ -11,7 +11,7 @@
 //   makes "project into Domain only when the namespace existed at
 //   registration time" true: a namespace linked after a name is already
 //   registered simply isn't in that loop yet, so no path gets materialised
-//   for it — see docs/plan.md Phase 4 plan for the full reasoning.
+//   for it.
 //
 // Get either loop direction backwards and the proposal's core safety
 // property (no unbounded recursive backfill) breaks.
@@ -84,7 +84,7 @@ function appendPathNamespaceIndex(
 // Idempotent: sets active = true whether creating or reactivating. Caller
 // checks pre-existence (ENSv2Namespace.load(id) == null, before calling
 // this) to decide whether to append indices — reactivation must never
-// re-append (docs/plan.md Phase 4 Decision 5).
+// re-append.
 function createOrReactivateNamespace(
   childRegistry: ENSv2Registry,
   parentSlot: ENSv2NameSlot,
@@ -128,9 +128,8 @@ function upsertNamespaceLink(
   event: SubregistryUpdated
 ): void {
   // A slot can only point at one subregistry at a time — deactivate the
-  // superseded link first (docs/plan.md Phase 4 Decisions 1-2). Nullable-
-  // Bytes comparison, not `!==`/`==` (docs/plan.md's AssemblyScript
-  // compiler gotcha, fix plan Phase 5): truthy-guard, then .equals(); an
+  // superseded link first. Nullable-Bytes comparison, not `!==`/`==`
+  // (AssemblyScript compiler gotcha, fix plan Phase 5): truthy-guard, then .equals(); an
   // empty Bytes() replaces the old "" sentinel (fix plan Phase 5 Decision
   // 5) — a real address is never zero-length, so the semantics are the same.
   if (previousChildAddress) {
@@ -187,7 +186,7 @@ function upsertNamespaceLink(
 
 // Reconstructs the same namespace ids the creation loop would have produced
 // (childRegistry + each existing path's namehash) and deactivates them —
-// never deletes (docs/plan.md Phase 4 Decision 3).
+// never deletes.
 function deactivateNamespacesFromParentSlot(
   parentSlot: ENSv2NameSlot,
   previousChildRegistryId: Bytes,

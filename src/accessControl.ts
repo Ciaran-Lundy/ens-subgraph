@@ -1,5 +1,4 @@
-// Shared access/admin-visibility handlers (fix plan Phase 3,
-// docs/ENS_Subgraph_Audit.md findings 1 and 6). ApprovalForAll and
+// Shared access/admin-visibility handlers (fix plan Phase 3). ApprovalForAll and
 // OwnershipTransferred are emitted, with identical meaning, by several
 // unrelated contracts (ENSRegistry, BaseRegistrar, NameWrapper, ENSv2
 // PermissionedRegistry instances) — each with its own generated event

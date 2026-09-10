@@ -1,8 +1,8 @@
 // Phase 9 — cross-file integration scenarios. Every per-file tests/ensv2*
 // suite verifies its own mapping file in isolation; this file chains
 // handlers from several mapping files together in one matchstick store to
-// catch regressions that only show up when they interact (docs/plan.md's
-// Phase 9 section). Scenarios that docs/plan.md lists but are already
+// catch regressions that only show up when they interact. Scenarios from
+// the original plan that are already
 // covered elsewhere are not repeated here: resource behavior across
 // unregister/re-register (ensv2Registry.test.ts, Phase 3), ProxyDeployed
 // same-tx ordering (ensv2Roles.test.ts, Phase 8), and

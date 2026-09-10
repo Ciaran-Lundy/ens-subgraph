@@ -425,7 +425,7 @@ test("late-link: pre-existing child registrations get zero new path rows and pat
   // The single most important assertion in this plan: no new path row for
   // the pre-existing "wallet" registration, and the index entity count is
   // an unchanged upper bound, not just "the specific expected row is
-  // absent" (docs/plan.md's explicit acceptance criterion for this test).
+  // absent" (the original plan's explicit acceptance criterion for this test).
   assert.fieldEquals("ENSv2NameSlot", walletSlotId, "pathCount", "0");
   assert.entityCount("ENSv2SlotPathIndex", 1);
 });
