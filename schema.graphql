@@ -783,13 +783,12 @@ type ENSv2ResolverData @entity(immutable: false) {
   resolver: ENSv2Resolver!
   node: Bytes!
   key: String!
-  # Always null, permanently: DataChanged's real signature only logs the
-  # data's keccak256 hash as an indexed topic (indexedData), never the raw
-  # bytes — there is no event this handler could ever populate this field
-  # from. Not a gap to fix; kept only so a future ABI/event change that
-  # does carry the raw value has somewhere to write it (see
-  # src/ensv2Resolver.ts::handleDataChanged).
-  value: Bytes
+  # No `value` field: DataChanged's real signature only logs the data's
+  # keccak256 hash as an indexed topic (indexedData), never the raw bytes —
+  # no code path could ever populate one (see
+  # src/ensv2Resolver.ts::handleDataChanged). A field that could provably
+  # never carry data was removed rather than kept permanently null; if a
+  # future ABI change ever does carry the raw value, add it back then.
   blockNumber: BigInt!
   transactionID: Bytes!
   logIndex: BigInt!

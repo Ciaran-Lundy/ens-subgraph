@@ -264,12 +264,12 @@ export function handleDataChanged(event: DataChanged): void {
     data.node = event.params.node;
     data.key = event.params.key;
   }
-  // value can never be populated from this event: the real signature is
+  // ENSv2ResolverData has no `value` field: the real signature is
   // DataChanged(bytes32 indexed node, string indexed indexedKey, string key,
   // bytes indexed indexedData) — the actual data bytes are only logged as
   // an indexed parameter (indexedData), so only its keccak256 hash reaches
-  // the log, never the raw bytes. Not an implementation gap — a hard ABI
-  // constraint.
+  // the log, never the raw bytes. A hard ABI constraint, not an
+  // implementation gap — nothing here could ever populate one.
   data.blockNumber = event.block.number;
   data.transactionID = event.transaction.hash;
   data.logIndex = event.logIndex;

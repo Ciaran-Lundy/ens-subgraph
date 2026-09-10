@@ -354,7 +354,7 @@ test("NamedAddrResource for two coinTypes on the same resource produces two dist
   assert.fieldEquals("ENSv2ResolverResource", btcId, "coinType", "0");
 });
 
-test("DataChanged produces ENSv2ResolverData with node/key set and value left null", () => {
+test("DataChanged produces ENSv2ResolverData with node/key set", () => {
   let node = Bytes.fromI32(9);
   let resolverId = Address.fromString(PERMISSIONED_RESOLVER).toHexString();
   let keyHash = Bytes.fromByteArray(crypto.keccak256(Bytes.fromUTF8("mykey")));
@@ -364,15 +364,7 @@ test("DataChanged produces ENSv2ResolverData with node/key set and value left nu
 
   assert.fieldEquals("ENSv2ResolverData", id, "key", "mykey");
   let entity = ENSv2ResolverData.load(Bytes.fromHexString(id));
-  let entityExists = entity != null;
-  assert.assertTrue(entityExists);
-  if (entity != null) {
-    let hasValue = false;
-    if (entity.value) {
-      hasValue = true;
-    }
-    assert.assertTrue(!hasValue);
-  }
+  assert.assertTrue(entity != null);
 });
 
 test("a standard ENSIP event fired from a PermissionedResolver-style address is still processed by the existing addressless Resolver source", () => {
