@@ -917,7 +917,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"assemblyscript@npm:0.19.23, assemblyscript@npm:^0.19.0":
+"assemblyscript@npm:0.19.23":
   version: 0.19.23
   resolution: "assemblyscript@npm:0.19.23"
   dependencies:
@@ -1719,7 +1719,6 @@ __metadata:
     "@ensdomains/content-hash": "npm:^2.5.3"
     "@graphprotocol/graph-cli": "npm:^0.98.1"
     "@graphprotocol/graph-ts": "npm:^0.38.2"
-    assemblyscript: "npm:^0.19.0"
     matchstick-as: "npm:^0.6.0"
     typescript: "npm:^4.9.4"
   languageName: unknown
